@@ -97,6 +97,13 @@ function getPlayerList(roomCode) {
   }));
 }
 
+// Check if socket is the host of a room
+function isHost(socket, room) {
+  if (!room) return false;
+  const player = room.players.find(p => p.id === socket.id);
+  return player && player.isHost;
+}
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -230,7 +237,7 @@ io.on('connection', (socket) => {
     const { roomCode, count } = data;
     const room = rooms[roomCode];
 
-    if (!room || room.host !== socket.id) {
+    if (!room || !isHost(socket, room)) {
       return;
     }
 
@@ -243,23 +250,29 @@ io.on('connection', (socket) => {
     const { roomCode } = data;
     const room = rooms[roomCode];
 
-    if (!room || room.host !== socket.id) {
+    if (!room || !isHost(socket, room)) {
       return;
     }
 
-    if (room.players.length < 2) {
-      socket.emit('gameError', { message: 'Need at least 2 players to start' });
+    // Filter to only count players that are actually in the socket room (connected)
+    const connectedPlayers = room.players.filter(player => {
+      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
+      return socketsInRoom && socketsInRoom.has(player.id);
+    });
+
+    if (connectedPlayers.length < 2) {
+      socket.emit('gameError', { message: `Need at least 2 players to start. Currently ${connectedPlayers.length} player(s) connected.` });
       return;
     }
 
-    if (room.impostorCount >= room.players.length) {
+    if (room.impostorCount >= connectedPlayers.length) {
       socket.emit('gameError', { message: 'Too many impostors for this many players' });
       return;
     }
 
-    // Select random impostors
+    // Select random impostors from connected players
     const impostorIds = [];
-    const playerIds = room.players.map(p => p.id);
+    const playerIds = connectedPlayers.map(p => p.id);
     const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
     
     for (let i = 0; i < room.impostorCount; i++) {
@@ -267,7 +280,7 @@ io.on('connection', (socket) => {
     }
 
     // Store impostor player names for reconnection (since socket IDs change)
-    room.impostorNames = room.players
+    room.impostorNames = connectedPlayers
       .filter(p => impostorIds.includes(p.id))
       .map(p => p.name);
 
@@ -276,23 +289,23 @@ io.on('connection', (socket) => {
     room.currentWordPair = wordPair;
     room.gameStarted = true;
 
-    // Send words to each player by socket ID
-    room.players.forEach(player => {
-      const isImpostor = impostorIds.includes(player.id);
-      io.to(player.id).emit('gameStarted', {
-        word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
-        isImpostor: isImpostor
-      });
-    });
-
-    // Also store word assignments by player name for reconnection
+    // Store word assignments by player name for reconnection
     room.playerWords = {};
-    room.players.forEach(player => {
+    connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
       room.playerWords[player.name] = {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
         isImpostor: isImpostor
       };
+    });
+
+    // Send words to each connected player by socket ID
+    connectedPlayers.forEach(player => {
+      const isImpostor = impostorIds.includes(player.id);
+      io.to(player.id).emit('gameStarted', {
+        word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
+        isImpostor: isImpostor
+      });
     });
 
     console.log(`Game started in room ${roomCode}`);
@@ -303,23 +316,33 @@ io.on('connection', (socket) => {
     const { roomCode } = data;
     const room = rooms[roomCode];
 
-    if (!room || room.host !== socket.id) {
+    if (!room || !isHost(socket, room)) {
       return;
     }
 
-    if (room.players.length < 2) {
-      socket.emit('gameError', { message: 'Need at least 2 players' });
+    // Filter to only count players that are actually in the socket room (connected)
+    const connectedPlayers = room.players.filter(player => {
+      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
+      return socketsInRoom && socketsInRoom.has(player.id);
+    });
+
+    if (connectedPlayers.length < 2) {
+      socket.emit('gameError', { message: `Need at least 2 players. Currently ${connectedPlayers.length} player(s) connected.` });
       return;
     }
 
-    if (room.impostorCount >= room.players.length) {
+    if (room.impostorCount >= connectedPlayers.length) {
       socket.emit('gameError', { message: 'Too many impostors for this many players' });
       return;
     }
 
-    // Select new random impostors
+    // Update player IDs to only use connected players
+    // This ensures we're working with current socket connections
+    room.players = connectedPlayers;
+
+    // Select new random impostors from connected players
     const impostorIds = [];
-    const playerIds = room.players.map(p => p.id);
+    const playerIds = connectedPlayers.map(p => p.id);
     const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
     
     for (let i = 0; i < room.impostorCount; i++) {
@@ -327,7 +350,7 @@ io.on('connection', (socket) => {
     }
 
     // Store impostor player names for reconnection (since socket IDs change)
-    room.impostorNames = room.players
+    room.impostorNames = connectedPlayers
       .filter(p => impostorIds.includes(p.id))
       .map(p => p.name);
 
@@ -337,7 +360,7 @@ io.on('connection', (socket) => {
 
     // Store word assignments by player name for reconnection
     room.playerWords = {};
-    room.players.forEach(player => {
+    connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
       room.playerWords[player.name] = {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
@@ -345,8 +368,8 @@ io.on('connection', (socket) => {
       };
     });
 
-    // Send new words to each player
-    room.players.forEach(player => {
+    // Send new words to each connected player
+    connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
       io.to(player.id).emit('newRoundStarted', {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
@@ -362,7 +385,7 @@ io.on('connection', (socket) => {
     const { roomCode } = data;
     const room = rooms[roomCode];
 
-    if (!room || room.host !== socket.id) {
+    if (!room || !isHost(socket, room)) {
       return;
     }
 
@@ -389,25 +412,30 @@ io.on('connection', (socket) => {
         const disconnectedSocketId = socket.id;
         const playerName = player.name;
         
-        // If host, don't remove immediately - allow reconnection
-        if (wasHost) {
-          // Mark host as disconnected but keep in array for reconnection
-          // Set a timeout to delete the room if host doesn't reconnect
-          setTimeout(() => {
-            // Check if room still exists
-            if (rooms[roomCode]) {
-              // Check if host reconnected (socket ID changed) or still disconnected
-              const hostPlayer = rooms[roomCode].players.find(p => p.name === playerName && p.isHost);
-              if (!hostPlayer || hostPlayer.id === disconnectedSocketId) {
-                // Host didn't reconnect, delete room
-                io.to(roomCode).emit('hostLeft');
-                delete rooms[roomCode];
-                console.log(`Host left, room ${roomCode} deleted`);
+        // If game has started, don't remove players immediately - allow reconnection
+        // This handles page navigation (lobby.html -> game.html)
+        if (room.gameStarted || wasHost) {
+          // Keep player in array for reconnection, don't remove immediately
+          if (wasHost) {
+            // Set a timeout to delete the room if host doesn't reconnect
+            setTimeout(() => {
+              // Check if room still exists
+              if (rooms[roomCode]) {
+                // Check if host reconnected (socket ID changed) or still disconnected
+                const hostPlayer = rooms[roomCode].players.find(p => p.name === playerName && p.isHost);
+                if (!hostPlayer || hostPlayer.id === disconnectedSocketId) {
+                  // Host didn't reconnect, delete room
+                  io.to(roomCode).emit('hostLeft');
+                  delete rooms[roomCode];
+                  console.log(`Host left, room ${roomCode} deleted`);
+                }
               }
-            }
-          }, 5000); // 5 second grace period for page navigation
+            }, 5000); // 5 second grace period for page navigation
+          }
+          // For non-host players in started game, just keep them in array
+          // They'll reconnect with new socket ID
         } else {
-          // Remove non-host player from room immediately
+          // Game hasn't started, remove player immediately
           room.players.splice(playerIndex, 1);
           // Update player list for remaining players
           io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });

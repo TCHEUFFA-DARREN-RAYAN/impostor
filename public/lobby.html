@@ -136,7 +136,9 @@
 
         // Handle game started
         socket.on('gameStarted', (data) => {
-            window.location.href = `game.html?room=${roomCode}&host=${isHost}`;
+            // Include player name in URL for incognito/new tab support
+            const playerName = sessionStorage.getItem('playerName') || (isHost ? 'Host' : 'Player');
+            window.location.href = `game.html?room=${roomCode}&host=${isHost}&name=${encodeURIComponent(playerName)}`;
         });
 
         // Handle errors

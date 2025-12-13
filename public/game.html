@@ -41,8 +41,23 @@
         const socket = io();
         window.gameSocket = socket;
 
-        // Get player name from sessionStorage
-        const playerName = sessionStorage.getItem('playerName') || (isHost ? 'Host' : 'Player');
+        // Get player name from sessionStorage or prompt
+        let playerName = sessionStorage.getItem('playerName');
+        if (!playerName) {
+            // If no sessionStorage (incognito/new tab), try to get from URL or prompt
+            if (isHost) {
+                playerName = 'Host';
+            } else {
+                // For non-host, we need to prompt or get from somewhere
+                // Try to get from a URL parameter if available, otherwise use a default
+                const urlName = urlParams.get('name');
+                playerName = urlName || prompt('Enter your name (same as when you joined):') || 'Player';
+            }
+            // Store for future use
+            if (playerName) {
+                sessionStorage.setItem('playerName', playerName);
+            }
+        }
 
         // Rejoin room to receive word if game has started
         function rejoinRoom() {
