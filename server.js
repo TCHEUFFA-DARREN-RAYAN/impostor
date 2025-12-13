@@ -131,11 +131,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (rooms[roomCode].gameStarted) {
-      socket.emit('joinError', { message: 'Game has already started' });
-      return;
-    }
-
     const room = rooms[roomCode];
     
     // Check if this socket is already in the room
@@ -144,7 +139,25 @@ io.on('connection', (socket) => {
       // Already in room, just rejoin socket room
       socket.join(roomCode);
       socket.emit('roomJoined', { roomCode });
-      io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+      
+      // If game has started, resend their word
+      if (room.gameStarted && room.playerWords?.[player.name]) {
+        const wordData = room.playerWords[player.name];
+        io.to(socket.id).emit('gameStarted', {
+          word: wordData.word,
+          isImpostor: wordData.isImpostor
+        });
+      } else if (room.gameStarted && room.currentWordPair) {
+        // Fallback to old method
+        const player = room.players[existingPlayerIndex];
+        const isImpostor = room.impostorNames?.includes(player.name) ?? false;
+        io.to(socket.id).emit('gameStarted', {
+          word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
+          isImpostor: isImpostor
+        });
+      } else {
+        io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+      }
       return;
     }
 
@@ -152,8 +165,9 @@ io.on('connection', (socket) => {
     const existingPlayerByNameIndex = room.players.findIndex(p => p.name === name);
     if (existingPlayerByNameIndex !== -1) {
       // Player reconnecting - update their socket ID
-      const wasHost = room.players[existingPlayerByNameIndex].isHost;
-      room.players[existingPlayerByNameIndex].id = socket.id;
+      const player = room.players[existingPlayerByNameIndex];
+      const wasHost = player.isHost;
+      player.id = socket.id;
       
       // Update host socket ID if this was the host
       if (wasHost) {
@@ -162,12 +176,34 @@ io.on('connection', (socket) => {
       
       socket.join(roomCode);
       socket.emit('roomJoined', { roomCode });
-      io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+      
+      // If game has started, resend their word
+      if (room.gameStarted && room.playerWords?.[name]) {
+        const wordData = room.playerWords[name];
+        io.to(socket.id).emit('gameStarted', {
+          word: wordData.word,
+          isImpostor: wordData.isImpostor
+        });
+      } else if (room.gameStarted && room.currentWordPair) {
+        // Fallback to old method
+        const isImpostor = room.impostorNames?.includes(name) ?? false;
+        io.to(socket.id).emit('gameStarted', {
+          word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
+          isImpostor: isImpostor
+        });
+      } else {
+        io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+      }
       console.log(`${name} reconnected to room ${roomCode}`);
       return;
     }
 
-    // New player joining
+    // New player joining - only allow if game hasn't started
+    if (room.gameStarted) {
+      socket.emit('joinError', { message: 'Game has already started' });
+      return;
+    }
+
     // Check if name is already taken
     const nameTaken = room.players.some(p => p.name === name);
     if (nameTaken) {
@@ -230,18 +266,33 @@ io.on('connection', (socket) => {
       impostorIds.push(shuffled[i]);
     }
 
+    // Store impostor player names for reconnection (since socket IDs change)
+    room.impostorNames = room.players
+      .filter(p => impostorIds.includes(p.id))
+      .map(p => p.name);
+
     // Get random word pair
     const wordPair = getRandomWordPair();
     room.currentWordPair = wordPair;
     room.gameStarted = true;
 
-    // Send words to each player
+    // Send words to each player by socket ID
     room.players.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
       io.to(player.id).emit('gameStarted', {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
         isImpostor: isImpostor
       });
+    });
+
+    // Also store word assignments by player name for reconnection
+    room.playerWords = {};
+    room.players.forEach(player => {
+      const isImpostor = impostorIds.includes(player.id);
+      room.playerWords[player.name] = {
+        word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
+        isImpostor: isImpostor
+      };
     });
 
     console.log(`Game started in room ${roomCode}`);
@@ -275,9 +326,24 @@ io.on('connection', (socket) => {
       impostorIds.push(shuffled[i]);
     }
 
+    // Store impostor player names for reconnection (since socket IDs change)
+    room.impostorNames = room.players
+      .filter(p => impostorIds.includes(p.id))
+      .map(p => p.name);
+
     // Get new random word pair
     const wordPair = getRandomWordPair();
     room.currentWordPair = wordPair;
+
+    // Store word assignments by player name for reconnection
+    room.playerWords = {};
+    room.players.forEach(player => {
+      const isImpostor = impostorIds.includes(player.id);
+      room.playerWords[player.name] = {
+        word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
+        isImpostor: isImpostor
+      };
+    });
 
     // Send new words to each player
     room.players.forEach(player => {
@@ -321,23 +387,28 @@ io.on('connection', (socket) => {
         const player = room.players[playerIndex];
         const wasHost = player.isHost;
         const disconnectedSocketId = socket.id;
+        const playerName = player.name;
         
-        // Remove player from room
-        room.players.splice(playerIndex, 1);
-
-        // If host left, wait a bit before deleting room (in case they're just navigating)
+        // If host, don't remove immediately - allow reconnection
         if (wasHost) {
+          // Mark host as disconnected but keep in array for reconnection
           // Set a timeout to delete the room if host doesn't reconnect
           setTimeout(() => {
-            // Check if room still exists and host socket ID is still the disconnected one
-            // (meaning host didn't reconnect)
-            if (rooms[roomCode] && rooms[roomCode].host === disconnectedSocketId) {
-              io.to(roomCode).emit('hostLeft');
-              delete rooms[roomCode];
-              console.log(`Host left, room ${roomCode} deleted`);
+            // Check if room still exists
+            if (rooms[roomCode]) {
+              // Check if host reconnected (socket ID changed) or still disconnected
+              const hostPlayer = rooms[roomCode].players.find(p => p.name === playerName && p.isHost);
+              if (!hostPlayer || hostPlayer.id === disconnectedSocketId) {
+                // Host didn't reconnect, delete room
+                io.to(roomCode).emit('hostLeft');
+                delete rooms[roomCode];
+                console.log(`Host left, room ${roomCode} deleted`);
+              }
             }
           }, 5000); // 5 second grace period for page navigation
         } else {
+          // Remove non-host player from room immediately
+          room.players.splice(playerIndex, 1);
           // Update player list for remaining players
           io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
         }

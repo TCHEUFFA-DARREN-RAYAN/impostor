@@ -41,6 +41,37 @@
         const socket = io();
         window.gameSocket = socket;
 
+        // Get player name from sessionStorage
+        const playerName = sessionStorage.getItem('playerName') || (isHost ? 'Host' : 'Player');
+
+        // Rejoin room to receive word if game has started
+        function rejoinRoom() {
+            if (roomCode && playerName) {
+                // Small delay to ensure socket is fully ready
+                setTimeout(() => {
+                    socket.emit('joinRoom', { roomCode, name: playerName });
+                }, 100);
+            }
+        }
+
+        // Rejoin immediately if socket is already connected, otherwise wait for connect
+        if (socket.connected) {
+            rejoinRoom();
+        } else {
+            socket.on('connect', () => {
+                rejoinRoom();
+            });
+        }
+
+        // Also handle joinError
+        socket.on('joinError', (data) => {
+            console.error('Join error:', data.message);
+            // If game already started error, that's okay - we'll get the word on rejoin
+            if (data.message !== 'Game has already started') {
+                alert(data.message);
+            }
+        });
+
         // Show/hide host controls
         if (isHost) {
             document.getElementById('hostControls').style.display = 'block';
@@ -87,7 +118,6 @@
 
         // Handle game ended
         socket.on('gameEnded', () => {
-            alert('Game ended by host. Returning to home...');
             socket.disconnect();
             window.location.href = 'index.html';
         });
