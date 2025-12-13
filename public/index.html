@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impostor Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🎭 Impostor Game by TCHEUFFA </h1>
+            <p class="subtitle">Find the impostor among you!</p>
+            
+            <div class="button-group">
+                <button id="createBtn" class="btn btn-primary">Create Game</button>
+                <button id="joinBtn" class="btn btn-secondary">Join Game</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+    <script>
+        // Initialize socket connection
+        const socket = io();
+        
+        // Store socket globally for use in other pages
+        window.gameSocket = socket;
+
+        document.getElementById('createBtn').addEventListener('click', () => {
+            const name = prompt('Enter your name (or leave blank for "Host"):') || 'Host';
+            // Store name before creating
+            sessionStorage.setItem('playerName', name);
+            sessionStorage.setItem('isHost', 'true');
+            socket.emit('createRoom', { name });
+        });
+
+        document.getElementById('joinBtn').addEventListener('click', () => {
+            const roomCode = prompt('Enter room code:');
+            if (roomCode) {
+                const name = prompt('Enter your name:');
+                if (name) {
+                    // Store name before joining
+                    sessionStorage.setItem('playerName', name);
+                    sessionStorage.setItem('isHost', 'false');
+                    socket.emit('joinRoom', { roomCode: roomCode.toUpperCase(), name });
+                }
+            }
+        });
+
+        // Handle room created
+        socket.on('roomCreated', (data) => {
+            // Name is already stored from the create button click
+            window.location.href = `lobby.html?room=${data.roomCode}&host=true`;
+        });
+
+        // Handle room joined
+        socket.on('roomJoined', (data) => {
+            // Name is already stored from the join button click
+            window.location.href = `lobby.html?room=${data.roomCode}&host=false`;
+        });
+
+        // Handle errors
+        socket.on('joinError', (data) => {
+            alert(data.message);
+        });
+    </script>
+</body>
+</html>
+

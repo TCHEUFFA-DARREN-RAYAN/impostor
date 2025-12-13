@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Lobby - Impostor Game by TCHEUFFA </title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🎮 Game Lobby</h1>
+            
+            <div class="room-code-section">
+                <p class="label">Room Code:</p>
+                <div class="room-code" id="roomCode">---</div>
+                <button class="btn btn-small" id="copyBtn">Copy</button>
+            </div>
+
+            <div id="hostControls" class="host-controls" style="display: none;">
+                <div class="form-group">
+                    <label for="impostorCount">Number of Impostors:</label>
+                    <select id="impostorCount" class="input">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                    </select>
+                </div>
+                <button id="startBtn" class="btn btn-primary">Start Game</button>
+            </div>
+
+            <div id="guestMessage" class="guest-message" style="display: none;">
+                <p>⏳ Waiting for host to start the game...</p>
+            </div>
+
+            <div class="players-section">
+                <h2>Players (<span id="playerCount">0</span>)</h2>
+                <div id="playerList" class="player-list">
+                    <!-- Players will be added here -->
+                </div>
+            </div>
+
+            <button id="leaveBtn" class="btn btn-danger">Leave Game</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+    <script>
+        // Get room code and host status from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomCode = urlParams.get('room');
+        const isHost = urlParams.get('host') === 'true';
+
+        // Initialize socket
+        const socket = io();
+        window.gameSocket = socket;
+
+        // Display room code
+        document.getElementById('roomCode').textContent = roomCode;
+
+        // Show/hide host controls
+        if (isHost) {
+            document.getElementById('hostControls').style.display = 'block';
+            document.getElementById('guestMessage').style.display = 'none';
+        } else {
+            document.getElementById('hostControls').style.display = 'none';
+            document.getElementById('guestMessage').style.display = 'block';
+        }
+
+        // Join room - get name from sessionStorage or prompt
+        let playerName = sessionStorage.getItem('playerName');
+        if (!playerName) {
+            playerName = isHost ? 'Host' : prompt('Enter your name:') || 'Player';
+            sessionStorage.setItem('playerName', playerName);
+        }
+        
+        if (isHost) {
+            // Host already created the room, just need to rejoin the socket room
+            // The server will handle this - we'll emit joinRoom but the server should recognize existing players
+            // Actually, since socket IDs change on page navigation, we need to rejoin
+            socket.emit('joinRoom', { roomCode, name: playerName });
+        } else {
+            socket.emit('joinRoom', { roomCode, name: playerName });
+        }
+
+        // Copy room code
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            navigator.clipboard.writeText(roomCode).then(() => {
+                const btn = document.getElementById('copyBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        });
+
+        // Update impostor count (host only)
+        if (isHost) {
+            document.getElementById('impostorCount').addEventListener('change', (e) => {
+                socket.emit('updateImpostorCount', {
+                    roomCode,
+                    count: parseInt(e.target.value)
+                });
+            });
+        }
+
+        // Start game (host only)
+        if (isHost) {
+            document.getElementById('startBtn').addEventListener('click', () => {
+                socket.emit('startGame', { roomCode });
+            });
+        }
+
+        // Update player list
+        socket.on('playerListUpdate', (data) => {
+            const playerList = document.getElementById('playerList');
+            const playerCount = document.getElementById('playerCount');
+            
+            playerList.innerHTML = '';
+            playerCount.textContent = data.players.length;
+
+            data.players.forEach(player => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = 'player-item';
+                playerDiv.innerHTML = `
+                    <span class="player-name">${player.name}</span>
+                    ${player.isHost ? '<span class="host-badge">Host</span>' : ''}
+                `;
+                playerList.appendChild(playerDiv);
+            });
+        });
+
+        // Handle game started
+        socket.on('gameStarted', (data) => {
+            window.location.href = `game.html?room=${roomCode}&host=${isHost}`;
+        });
+
+        // Handle errors
+        socket.on('gameError', (data) => {
+            alert(data.message);
+        });
+
+        // Handle host left
+        socket.on('hostLeft', () => {
+            alert('Host left the game. Returning to home...');
+            window.location.href = 'index.html';
+        });
+
+        // Leave game
+        document.getElementById('leaveBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to leave?')) {
+                socket.disconnect();
+                window.location.href = 'index.html';
+            }
+        });
+    </script>
+</body>
+</html>
+

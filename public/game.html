@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game - Impostor Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card game-card">
+            <div id="impostorBadge" class="impostor-badge" style="display: none;">
+                🎭 YOU ARE THE IMPOSTOR
+            </div>
+
+            <div class="word-display">
+                <p class="word-label">Your word:</p>
+                <div class="word" id="wordDisplay">---</div>
+            </div>
+
+            <div id="hostControls" class="host-controls" style="display: none;">
+                <button id="newRoundBtn" class="btn btn-primary">New Round</button>
+                <button id="endGameBtn" class="btn btn-danger">End Game</button>
+            </div>
+
+            <div id="guestMessage" class="guest-message" style="display: none;">
+                <p>Waiting for host to start next round...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+    <script>
+        // Get room code and host status from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomCode = urlParams.get('room');
+        const isHost = urlParams.get('host') === 'true';
+
+        // Initialize socket
+        const socket = io();
+        window.gameSocket = socket;
+
+        // Show/hide host controls
+        if (isHost) {
+            document.getElementById('hostControls').style.display = 'block';
+            document.getElementById('guestMessage').style.display = 'none';
+        } else {
+            document.getElementById('hostControls').style.display = 'none';
+            document.getElementById('guestMessage').style.display = 'none';
+        }
+
+        // Display word and impostor status
+        socket.on('gameStarted', (data) => {
+            displayWord(data.word, data.isImpostor);
+        });
+
+        socket.on('newRoundStarted', (data) => {
+            displayWord(data.word, data.isImpostor);
+            document.getElementById('guestMessage').style.display = 'none';
+        });
+
+        function displayWord(word, isImpostor) {
+            document.getElementById('wordDisplay').textContent = word;
+            
+            if (isImpostor) {
+                document.getElementById('impostorBadge').style.display = 'block';
+                document.body.classList.add('impostor-mode');
+            } else {
+                document.getElementById('impostorBadge').style.display = 'none';
+                document.body.classList.remove('impostor-mode');
+            }
+        }
+
+        // New round (host only)
+        if (isHost) {
+            document.getElementById('newRoundBtn').addEventListener('click', () => {
+                socket.emit('newRound', { roomCode });
+            });
+
+            document.getElementById('endGameBtn').addEventListener('click', () => {
+                if (confirm('Are you sure you want to end the game?')) {
+                    socket.emit('endGame', { roomCode });
+                }
+            });
+        }
+
+        // Handle game ended
+        socket.on('gameEnded', () => {
+            alert('Game ended by host. Returning to home...');
+            socket.disconnect();
+            window.location.href = 'index.html';
+        });
+
+        // Handle host left
+        socket.on('hostLeft', () => {
+            alert('Host left the game. Returning to home...');
+            socket.disconnect();
+            window.location.href = 'index.html';
+        });
+
+        // Handle errors
+        socket.on('gameError', (data) => {
+            alert(data.message);
+        });
+    </script>
+</body>
+</html>
+
