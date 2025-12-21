@@ -368,11 +368,15 @@ io.on('connection', (socket) => {
 
     io.to(roomCode).emit('playerListUpdate', { players: playerList });
     
-    // Initial speaker update
-    io.to(roomCode).emit('speakerUpdate', { 
-      currentSpeaker: room.currentSpeaker,
-      speakerName: playerList.find(p => p.turnOrder === room.currentSpeaker)?.name || 'Someone'
-    });
+    // Initial speaker update - delay slightly to ensure client sets myTurnOrder
+    setTimeout(() => {
+      if (rooms[roomCode]) {
+        io.to(roomCode).emit('speakerUpdate', { 
+          currentSpeaker: rooms[roomCode].currentSpeaker,
+          speakerName: playerList.find(p => p.turnOrder === rooms[roomCode].currentSpeaker)?.name || 'Someone'
+        });
+      }
+    }, 500);
 
     console.log(`Game started in room ${roomCode}. Turn orders:`, playerList.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
   });
@@ -450,11 +454,15 @@ io.on('connection', (socket) => {
 
     io.to(roomCode).emit('playerListUpdate', { players: playerList });
     
-    // Initial speaker update for new round
-    io.to(roomCode).emit('speakerUpdate', { 
-      currentSpeaker: room.currentSpeaker,
-      speakerName: playerList.find(p => p.turnOrder === room.currentSpeaker)?.name || 'Someone'
-    });
+    // Initial speaker update for new round - delay slightly
+    setTimeout(() => {
+      if (rooms[roomCode]) {
+        io.to(roomCode).emit('speakerUpdate', { 
+          currentSpeaker: rooms[roomCode].currentSpeaker,
+          speakerName: playerList.find(p => p.turnOrder === rooms[roomCode].currentSpeaker)?.name || 'Someone'
+        });
+      }
+    }, 500);
 
     console.log(`New round started in room ${roomCode}. Turn orders:`, playerList.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
   });

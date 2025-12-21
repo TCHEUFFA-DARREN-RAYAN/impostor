@@ -106,6 +106,29 @@
         let hasVoted = false;
         let votingLocked = true;
         let currentSpeakerTurn = 1;
+        let lastSpeakerName = 'Someone';
+
+        function updateSpeakerUI() {
+            const speakNowBtn = document.getElementById('speakNowBtn');
+            const othersSpeakingStatus = document.getElementById('othersSpeakingStatus');
+            const otherSpeakerName = document.getElementById('otherSpeakerName');
+            
+            if (!speakNowBtn || !othersSpeakingStatus) return;
+
+            // Ensure both are treated as numbers for comparison
+            const isMyTurn = myTurnOrder !== null && parseInt(currentSpeakerTurn) === parseInt(myTurnOrder);
+            
+            console.log('Updating Speaker UI. Current turn:', currentSpeakerTurn, 'My turn:', myTurnOrder, 'Is my turn?', isMyTurn);
+
+            if (isMyTurn) {
+                speakNowBtn.style.display = 'block';
+                othersSpeakingStatus.style.display = 'none';
+            } else {
+                speakNowBtn.style.display = 'none';
+                othersSpeakingStatus.style.display = 'block';
+                otherSpeakerName.textContent = lastSpeakerName;
+            }
+        }
 
         // Rejoin room to receive word if game has started
         function rejoinRoom() {
@@ -188,6 +211,7 @@
                 updateTurnOrderDisplay();
                 updateScores();
                 setupVoting();
+                updateSpeakerUI();
             }
         });
 
@@ -229,27 +253,14 @@
                 updateTurnOrderDisplay();
                 updateScores();
                 setupVoting();
+                updateSpeakerUI();
             }
         });
 
         socket.on('speakerUpdate', (data) => {
             currentSpeakerTurn = data.currentSpeaker;
-            const speakNowBtn = document.getElementById('speakNowBtn');
-            const othersSpeakingStatus = document.getElementById('othersSpeakingStatus');
-            const otherSpeakerName = document.getElementById('otherSpeakerName');
-            
-            // Ensure both are numbers for comparison
-            const isMyTurn = parseInt(currentSpeakerTurn) === parseInt(myTurnOrder);
-            console.log('Speaker update received. Current speaker:', currentSpeakerTurn, 'My turn order:', myTurnOrder, 'Is my turn?', isMyTurn);
-
-            if (isMyTurn) {
-                speakNowBtn.style.display = 'block';
-                othersSpeakingStatus.style.display = 'none';
-            } else {
-                speakNowBtn.style.display = 'none';
-                othersSpeakingStatus.style.display = 'block';
-                otherSpeakerName.textContent = data.speakerName;
-            }
+            lastSpeakerName = data.speakerName;
+            updateSpeakerUI();
         });
 
         document.getElementById('speakNowBtn').addEventListener('click', () => {
