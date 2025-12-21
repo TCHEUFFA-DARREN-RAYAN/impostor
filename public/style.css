@@ -6,17 +6,29 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: #f5f7fa;
+    background: #1a472a; /* Christmas dark green */
+    background-image: 
+        radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 40px),
+        radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 30px),
+        radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 40px);
+    background-size: 550px 550px, 350px 350px, 250px 250px;
+    background-position: 0 0, 40px 60px, 130px 270px;
     min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 20px;
     color: #2c3e50;
+    animation: snow 15s linear infinite;
+}
+
+@keyframes snow {
+    0% { background-position: 0 0, 40px 60px, 130px 270px; }
+    100% { background-position: 550px 550px, 390px 410px, 380px 820px; }
 }
 
 body.impostor-mode {
-    background: #f5f7fa;
+    background: #4a0e0e; /* Christmas dark red for impostor */
 }
 
 .container {
@@ -25,20 +37,39 @@ body.impostor-mode {
 }
 
 .card {
-    background: white;
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
     padding: 40px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e1e8ed;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 4px solid #c0392b; /* Christmas red border */
     text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.card::before {
+    content: "🎄";
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 24px;
+}
+
+.card::after {
+    content: "🎁";
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 24px;
 }
 
 h1 {
-    font-size: 2em;
+    font-size: 2.2em;
     margin-bottom: 10px;
-    color: #2c3e50;
-    font-weight: 600;
+    color: #c0392b; /* Christmas red */
+    font-weight: 700;
     letter-spacing: -0.5px;
+    text-shadow: 1px 1px 0px #fff;
 }
 
 .subtitle {
@@ -67,23 +98,27 @@ h1 {
 }
 
 .btn-primary {
-    background: #3498db;
+    background: #c0392b; /* Christmas red */
     color: white;
+    border: 2px solid #a93226;
 }
 
 .btn-primary:hover {
-    background: #2980b9;
-    box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+    background: #a93226;
+    box-shadow: 0 4px 12px rgba(192, 57, 43, 0.4);
+    transform: scale(1.05);
 }
 
 .btn-secondary {
-    background: #95a5a6;
+    background: #27ae60; /* Christmas green */
     color: white;
+    border: 2px solid #229954;
 }
 
 .btn-secondary:hover {
-    background: #7f8c8d;
-    box-shadow: 0 2px 4px rgba(149, 165, 166, 0.3);
+    background: #229954;
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+    transform: scale(1.05);
 }
 
 .btn-danger {
@@ -123,7 +158,7 @@ h1 {
 .room-code {
     font-size: 2.5em;
     font-weight: 600;
-    color: #2c3e50;
+    color: #c0392b;
     letter-spacing: 4px;
     margin: 15px 0;
     font-family: 'Courier New', monospace;
@@ -164,8 +199,8 @@ h1 {
 
 .input:focus {
     outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-color: #c0392b;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.1);
 }
 
 /* Guest Message */
@@ -226,7 +261,7 @@ h1 {
 }
 
 .host-badge {
-    background: #3498db;
+    background: #c0392b;
     color: white;
     padding: 4px 10px;
     border-radius: 4px;
@@ -274,16 +309,17 @@ h1 {
 
 .word {
     font-size: 3.5em;
-    font-weight: 600;
-    color: #2c3e50;
+    font-weight: 800;
+    color: #1a472a; /* Christmas dark green */
     margin: 20px 0;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 4px;
     font-family: 'Courier New', monospace;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
 }
 
 body.impostor-mode .word {
-    color: #e74c3c;
+    color: #c0392b;
 }
 
 /* Game Header */
@@ -307,13 +343,14 @@ body.impostor-mode .word {
 }
 
 .score-badge {
-    background: #f39c12;
-    color: white;
+    background: #f1c40f; /* Christmas gold */
+    color: #2c3e50;
     padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(243, 156, 18, 0.3);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(241, 196, 15, 0.3);
     text-align: center;
     min-width: 120px;
+    border: 2px solid #d4ac0d;
 }
 
 .score-label {
@@ -330,13 +367,14 @@ body.impostor-mode .word {
 }
 
 .turn-order {
-    background: #3498db;
+    background: #c0392b; /* Christmas red */
     color: white;
     padding: 12px 20px;
-    border-radius: 8px;
+    border-radius: 12px;
     font-size: 0.95em;
     font-weight: 600;
-    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+    box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);
+    border: 2px solid #a93226;
 }
 
 .turn-order strong {
@@ -364,11 +402,12 @@ body.impostor-mode .word {
     max-width: 400px;
     width: 90%;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border: 4px solid #c0392b;
 }
 
 .modal-content h2 {
     margin-bottom: 20px;
-    color: #2c3e50;
+    color: #c0392b;
 }
 
 .modal-content label {
@@ -379,9 +418,7 @@ body.impostor-mode .word {
 }
 
 .modal-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 20px;
+    display: flex; gap: 10px; margin-top: 20px;
 }
 
 .modal-buttons .btn {
@@ -389,8 +426,8 @@ body.impostor-mode .word {
 }
 
 .turn-badge {
-    background: #9b59b6;
-    color: white;
+    background: #f1c40f;
+    color: #2c3e50;
     padding: 4px 10px;
     border-radius: 4px;
     font-size: 0.75em;
@@ -398,7 +435,7 @@ body.impostor-mode .word {
     margin-left: 8px;
 }
 
-.score-badge {
+.score-badge-list {
     background: #27ae60;
     color: white;
     padding: 4px 10px;
@@ -432,25 +469,24 @@ body.impostor-mode .word {
 }
 
 .btn-vote {
-    background: #3498db;
+    background: #27ae60; /* Christmas green */
     color: white;
     padding: 16px 24px;
     font-size: 1.1em;
-    border: none;
-    border-radius: 8px;
+    border: 2px solid #229954;
+    border-radius: 10px;
     cursor: pointer;
     transition: all 0.2s ease;
     font-weight: 600;
     width: 100%;
-    border: 2px solid transparent;
     margin-bottom: 12px;
     min-height: 50px;
     display: block;
 }
 
 .btn-vote:hover:not(:disabled) {
-    background: #2980b9;
-    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+    background: #2ecc71;
+    box-shadow: 0 4px 12px rgba(46, 204, 113, 0.4);
     transform: translateY(-2px);
 }
 
@@ -462,14 +498,14 @@ body.impostor-mode .word {
 }
 
 .btn-vote.voted {
-    background: #27ae60;
-    border-color: #229954;
+    background: #c0392b; /* Red when voted */
+    border-color: #a93226;
     font-weight: 700;
-    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+    box-shadow: 0 4px 12px rgba(192, 57, 43, 0.4);
 }
 
 .btn-vote.voted:disabled {
-    background: #27ae60;
+    background: #c0392b;
     opacity: 1;
 }
 
@@ -486,7 +522,7 @@ body.impostor-mode .word {
 }
 
 .vote-status strong {
-    color: #3498db;
+    color: #c0392b;
     font-size: 1.2em;
 }
 
@@ -528,16 +564,16 @@ body.impostor-mode .word {
 
 .result-success {
     color: #27ae60;
-    font-weight: 600;
-    font-size: 1.1em;
+    font-weight: 700;
+    font-size: 1.3em;
     text-align: center;
     margin-bottom: 15px;
 }
 
 .result-fail {
-    color: #e74c3c;
-    font-weight: 600;
-    font-size: 1.1em;
+    color: #c0392b;
+    font-weight: 700;
+    font-size: 1.3em;
     text-align: center;
     margin-bottom: 15px;
 }
@@ -547,7 +583,7 @@ body.impostor-mode .word {
     padding: 4px 8px;
     border-radius: 4px;
     font-weight: 600;
-    color: #3498db;
+    color: #c0392b;
 }
 
 /* Responsive Design */
@@ -602,4 +638,3 @@ body.impostor-mode .word {
         font-size: 2em;
     }
 }
-
