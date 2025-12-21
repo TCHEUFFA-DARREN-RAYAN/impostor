@@ -292,9 +292,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Use the more reliable connected players check
     const connectedPlayers = getConnectedPlayers(roomCode);
-
     if (connectedPlayers.length < 2) {
       socket.emit('gameError', { message: `Need at least 2 players to start. Currently ${connectedPlayers.length} player(s) connected.` });
       return;
@@ -305,51 +303,37 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Assign random turn orders (1 to number of players, no duplicates)
-    // Get connected room players (not just connectedPlayers array)
-    const connectedRoomPlayers = room.players.filter(rp => {
-      const socket = io.sockets.sockets.get(rp.id);
-      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
-      return socket && socket.connected && socketsInRoom && socketsInRoom.has(rp.id);
-    });
+    // 1. Assign unique random turn orders to EVERY connected player
+    const numbers = Array.from({ length: connectedPlayers.length }, (_, i) => i + 1);
+    const shuffledNumbers = [...numbers].sort(() => Math.random() - 0.5);
     
-    // Shuffle to assign random turn orders
-    const shuffledRoomPlayers = [...connectedRoomPlayers].sort(() => Math.random() - 0.5);
-    
-    // Assign turn orders (1, 2, 3, etc. in random order)
-    shuffledRoomPlayers.forEach((roomPlayer, index) => {
-      roomPlayer.turnOrder = index + 1;
-      // Ensure score exists
-      if (roomPlayer.score === undefined || roomPlayer.score === null) {
-        roomPlayer.score = 0;
+    connectedPlayers.forEach((player, index) => {
+      const roomPlayer = room.players.find(rp => rp.name === player.name);
+      if (roomPlayer) {
+        roomPlayer.turnOrder = shuffledNumbers[index];
+        roomPlayer.id = player.id; // Ensure socket ID is current
+        if (roomPlayer.score === undefined) roomPlayer.score = 0;
       }
     });
-    
-    console.log(`Assigned turn orders in room ${roomCode}:`, shuffledRoomPlayers.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
 
-    // Select random impostors from connected players
+    // 2. Select random impostors
     const impostorIds = [];
     const playerIds = connectedPlayers.map(p => p.id);
-    const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
-    
+    const shuffledIds = [...playerIds].sort(() => Math.random() - 0.5);
     for (let i = 0; i < room.impostorCount; i++) {
-      impostorIds.push(shuffled[i]);
+      impostorIds.push(shuffledIds[i]);
     }
 
-    // Store impostor player names for reconnection (since socket IDs change)
     room.impostorNames = connectedPlayers
       .filter(p => impostorIds.includes(p.id))
       .map(p => p.name);
 
-    // Get random word pair
     const wordPair = getRandomWordPair();
     room.currentWordPair = wordPair;
     room.gameStarted = true;
-    room.currentTurn = 1;
-    room.votes = {};
     room.roundEnded = false;
+    room.votes = {};
 
-    // Store word assignments by player name for reconnection
     room.playerWords = {};
     connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
@@ -359,27 +343,22 @@ io.on('connection', (socket) => {
       };
     });
 
-    // Send words and game state to each connected player by socket ID
+    // 3. Send to each player
+    const playerList = getPlayerList(roomCode);
     connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
-      // Get turnOrder from room.players (where it was actually set)
-      const roomPlayer = room.players.find(rp => rp.id === player.id || rp.name === player.name);
-      const turnOrder = roomPlayer ? roomPlayer.turnOrder : null;
-      
-      console.log(`Sending gameStarted to ${player.name} (${player.id}): turnOrder=${turnOrder}`);
+      const roomPlayer = room.players.find(rp => rp.name === player.name);
       
       io.to(player.id).emit('gameStarted', {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
         isImpostor: isImpostor,
-        turnOrder: turnOrder,
-        players: getPlayerList(roomCode)
+        turnOrder: roomPlayer ? roomPlayer.turnOrder : null,
+        players: playerList
       });
     });
 
-    // Broadcast player list update with scores and turn orders
-    io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
-
-    console.log(`Game started in room ${roomCode}`);
+    io.to(roomCode).emit('playerListUpdate', { players: playerList });
+    console.log(`Game started in room ${roomCode}. Turn orders:`, playerList.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
   });
 
   // New round
@@ -391,9 +370,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Use the more reliable connected players check
     const connectedPlayers = getConnectedPlayers(roomCode);
-
     if (connectedPlayers.length < 2) {
       socket.emit('gameError', { message: `Need at least 2 players. Currently ${connectedPlayers.length} player(s) connected.` });
       return;
@@ -404,64 +381,35 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Update room.players to only include connected players (but preserve scores)
-    const connectedPlayerNames = new Set(connectedPlayers.map(p => p.name));
-    room.players = room.players
-      .filter(p => connectedPlayerNames.has(p.name))
-      .map(p => {
-        // Find the connected player to get updated socket ID
-        const connectedPlayer = connectedPlayers.find(cp => cp.name === p.name);
-        if (connectedPlayer) {
-          p.id = connectedPlayer.id; // Update socket ID
-          return p;
-        }
-        return p;
-      });
-
-    // Reassign random turn orders for connected players (preserve scores)
-    // Get connected room players (already filtered above)
-    const connectedRoomPlayers = room.players.filter(rp => {
-      const socket = io.sockets.sockets.get(rp.id);
-      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
-      return socket && socket.connected && socketsInRoom && socketsInRoom.has(rp.id);
-    });
+    // 1. Reassign unique random turn orders
+    const numbers = Array.from({ length: connectedPlayers.length }, (_, i) => i + 1);
+    const shuffledNumbers = [...numbers].sort(() => Math.random() - 0.5);
     
-    // Shuffle to assign random turn orders
-    const shuffledRoomPlayers = [...connectedRoomPlayers].sort(() => Math.random() - 0.5);
-    
-    // Assign turn orders (1, 2, 3, etc. in random order)
-    shuffledRoomPlayers.forEach((roomPlayer, index) => {
-      roomPlayer.turnOrder = index + 1;
-      // Ensure score exists and is preserved
-      if (roomPlayer.score === undefined || roomPlayer.score === null) {
-        roomPlayer.score = 0;
+    connectedPlayers.forEach((player, index) => {
+      const roomPlayer = room.players.find(rp => rp.name === player.name);
+      if (roomPlayer) {
+        roomPlayer.turnOrder = shuffledNumbers[index];
+        roomPlayer.id = player.id;
       }
     });
-    
-    console.log(`Assigned turn orders in new round ${roomCode}:`, shuffledRoomPlayers.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
 
-    // Select new random impostors from connected players
+    // 2. Select random impostors
     const impostorIds = [];
     const playerIds = connectedPlayers.map(p => p.id);
-    const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
-    
+    const shuffledIds = [...playerIds].sort(() => Math.random() - 0.5);
     for (let i = 0; i < room.impostorCount; i++) {
-      impostorIds.push(shuffled[i]);
+      impostorIds.push(shuffledIds[i]);
     }
 
-    // Store impostor player names for reconnection (since socket IDs change)
     room.impostorNames = connectedPlayers
       .filter(p => impostorIds.includes(p.id))
       .map(p => p.name);
 
-    // Get new random word pair
     const wordPair = getRandomWordPair();
     room.currentWordPair = wordPair;
-    room.currentTurn = 1;
-    room.votes = {};
     room.roundEnded = false;
+    room.votes = {};
 
-    // Store word assignments by player name for reconnection
     room.playerWords = {};
     connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
@@ -471,27 +419,22 @@ io.on('connection', (socket) => {
       };
     });
 
-    // Send new words and game state to each connected player
+    // 3. Send to each player
+    const playerList = getPlayerList(roomCode);
     connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
-      // Get turnOrder from room.players (where it was actually set)
-      const roomPlayer = room.players.find(rp => rp.id === player.id || rp.name === player.name);
-      const turnOrder = roomPlayer ? roomPlayer.turnOrder : null;
-      
-      console.log(`Sending newRoundStarted to ${player.name} (${player.id}): turnOrder=${turnOrder}`);
+      const roomPlayer = room.players.find(rp => rp.name === player.name);
       
       io.to(player.id).emit('newRoundStarted', {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
         isImpostor: isImpostor,
-        turnOrder: turnOrder,
-        players: getPlayerList(roomCode)
+        turnOrder: roomPlayer ? roomPlayer.turnOrder : null,
+        players: playerList
       });
     });
 
-    // Broadcast player list update with scores and turn orders
-    io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
-
-    console.log(`New round started in room ${roomCode}`);
+    io.to(roomCode).emit('playerListUpdate', { players: playerList });
+    console.log(`New round started in room ${roomCode}. Turn orders:`, playerList.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
   });
 
   // Vote for impostor

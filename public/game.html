@@ -222,29 +222,19 @@
             const turnOrderNumber = document.getElementById('turnOrderNumber');
             const totalPlayers = document.getElementById('totalPlayers');
             
-            console.log('Updating turn order display. myTurnOrder:', myTurnOrder, 'currentPlayers:', currentPlayers);
-            
-            // Try to get turnOrder from currentPlayers if myTurnOrder is not set
-            if ((!myTurnOrder || myTurnOrder === null || myTurnOrder === undefined) && currentPlayers && currentPlayers.length > 0) {
-                const myPlayer = currentPlayers.find(p => p.name === playerName);
-                if (myPlayer && (myPlayer.turnOrder !== null && myPlayer.turnOrder !== undefined)) {
-                    myTurnOrder = myPlayer.turnOrder;
-                    console.log('Found turnOrder from currentPlayers:', myTurnOrder);
-                }
+            // Try to find myself in currentPlayers to get turnOrder
+            const myPlayer = currentPlayers.find(p => p.name === playerName);
+            if (myPlayer && myPlayer.turnOrder) {
+                myTurnOrder = myPlayer.turnOrder;
             }
             
-            // Always show the display
-            turnOrderDisplay.style.display = 'block';
-            
-            if (myTurnOrder && myTurnOrder !== null && myTurnOrder !== undefined && currentPlayers && currentPlayers.length > 0) {
+            if (myTurnOrder && currentPlayers.length > 0) {
                 turnOrderNumber.textContent = myTurnOrder;
                 totalPlayers.textContent = currentPlayers.length;
-                console.log('Turn order displayed:', myTurnOrder, 'of', currentPlayers.length);
+                turnOrderDisplay.style.display = 'block';
             } else {
-                console.log('Turn order not available yet. myTurnOrder:', myTurnOrder, 'currentPlayers length:', currentPlayers ? currentPlayers.length : 0);
-                // Show placeholder until we get the real value
                 turnOrderNumber.textContent = '-';
-                totalPlayers.textContent = currentPlayers && currentPlayers.length > 0 ? currentPlayers.length : '-';
+                totalPlayers.textContent = currentPlayers.length || '-';
             }
         }
 
@@ -464,27 +454,38 @@
 
         // Handle game ended
         socket.on('gameEnded', (data) => {
-            let message = 'Game Ended!\n\nFinal Scores:\n';
-            if (data && data.players) {
-                const sortedPlayers = [...data.players].sort((a, b) => (b.score || 0) - (a.score || 0));
-                sortedPlayers.forEach((player, index) => {
-                    message += `${index + 1}. ${player.name}: ${player.score || 0} point(s)\n`;
-                });
-            }
             // Show message in div
             const endDiv = document.createElement('div');
             endDiv.className = 'game-ended-message';
-            endDiv.innerHTML = '<h2>Game Ended!</h2><h3>Final Scores:</h3>' + 
-                (data && data.players ? 
-                    data.players.sort((a, b) => (b.score || 0) - (a.score || 0))
-                        .map((p, i) => `<p>${i + 1}. ${p.name}: ${p.score || 0} points</p>`).join('') 
-                    : '');
-            endDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 400px; text-align: center;';
+            endDiv.innerHTML = `
+                <div class="modal">
+                    <div class="modal-content">
+                        <h2>Game Ended!</h2>
+                        <h3>Final Scores:</h3>
+                        <div class="final-scores-list" style="margin: 20px 0; text-align: left;">
+                            ${data && data.players ? 
+                                data.players.sort((a, b) => (b.score || 0) - (a.score || 0))
+                                    .map((p, i) => `<p style="padding: 8px; border-bottom: 1px solid #eee;">${i + 1}. <strong>${p.name}</strong>: ${p.score || 0} pts</p>`).join('') 
+                                : '<p>No score data available</p>'}
+                        </div>
+                        <button id="returnHomeBtn" class="btn btn-primary" style="width: 100%;">Return to Home</button>
+                    </div>
+                </div>
+            `;
             document.body.appendChild(endDiv);
-            setTimeout(() => {
+            
+            document.getElementById('returnHomeBtn').onclick = () => {
                 socket.disconnect();
                 window.location.href = 'index.html';
-            }, 5000);
+            };
+
+            // Auto-redirect after 10 seconds if they don't click
+            setTimeout(() => {
+                if (window.location.pathname.includes('game.html')) {
+                    socket.disconnect();
+                    window.location.href = 'index.html';
+                }
+            }, 10000);
         });
 
         // Handle host left

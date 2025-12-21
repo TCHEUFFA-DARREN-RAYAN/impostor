@@ -70,10 +70,10 @@
             document.getElementById('guestMessage').style.display = 'block';
         }
 
-        // Join room - get name from sessionStorage or prompt
+        // Join room - get name from sessionStorage
         let playerName = sessionStorage.getItem('playerName');
         if (!playerName) {
-            playerName = isHost ? 'Host' : prompt('Enter your name:') || 'Player';
+            playerName = isHost ? 'Host' : 'Player';
             sessionStorage.setItem('playerName', playerName);
         }
         
@@ -162,13 +162,24 @@
 
         // Handle errors
         socket.on('gameError', (data) => {
-            alert(data.message);
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = data.message;
+            errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
         });
 
         // Handle host left
         socket.on('hostLeft', () => {
-            alert('Host left the game. Returning to home...');
-            window.location.href = 'index.html';
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = 'Host left the game. Returning to home...';
+            errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(errorDiv);
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 3000);
         });
 
         // Handle game ended
@@ -179,10 +190,28 @@
 
         // Leave game
         document.getElementById('leaveBtn').addEventListener('click', () => {
-            if (confirm('Are you sure you want to leave?')) {
+            const confirmDiv = document.createElement('div');
+            confirmDiv.className = 'modal';
+            confirmDiv.innerHTML = `
+                <div class="modal-content">
+                    <h2>Leave Game?</h2>
+                    <p>Are you sure you want to leave the lobby?</p>
+                    <div class="modal-buttons">
+                        <button id="confirmLeave" class="btn btn-danger">Yes, Leave</button>
+                        <button id="cancelLeave" class="btn btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(confirmDiv);
+            
+            document.getElementById('confirmLeave').addEventListener('click', () => {
                 socket.disconnect();
                 window.location.href = 'index.html';
-            }
+            });
+            
+            document.getElementById('cancelLeave').addEventListener('click', () => {
+                confirmDiv.remove();
+            });
         });
     </script>
 </body>
