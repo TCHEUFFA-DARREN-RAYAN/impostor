@@ -87,6 +87,16 @@ function getRandomWordPair() {
   };
 }
 
+// Professional Fisher-Yates shuffle algorithm for true randomness
+function shuffleArray(array) {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+}
+
 // Get player list for a room
 function getPlayerList(roomCode) {
   if (!rooms[roomCode]) return [];
@@ -134,7 +144,7 @@ io.on('connection', (socket) => {
         name: data.name || 'Host',
         isHost: true,
         score: 0,
-        turnOrder: 1
+        turnOrder: null // Only assigned when game starts
       }],
       host: socket.id,
       impostorCount: 1,
@@ -252,14 +262,12 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Assign turn order based on number of players
-    const turnOrder = room.players.length + 1;
     room.players.push({
       id: socket.id,
       name: name,
       isHost: false,
       score: 0,
-      turnOrder: turnOrder
+      turnOrder: null // Only assigned when game starts
     });
 
     socket.join(roomCode);
@@ -305,7 +313,7 @@ io.on('connection', (socket) => {
 
     // 1. Assign unique random turn orders to EVERY connected player
     const numbers = Array.from({ length: connectedPlayers.length }, (_, i) => i + 1);
-    const shuffledNumbers = [...numbers].sort(() => Math.random() - 0.5);
+    const shuffledNumbers = shuffleArray(numbers);
     
     connectedPlayers.forEach((player, index) => {
       const roomPlayer = room.players.find(rp => rp.name === player.name);
@@ -316,13 +324,10 @@ io.on('connection', (socket) => {
       }
     });
 
-    // 2. Select random impostors
-    const impostorIds = [];
+    // 2. Select random impostors using true shuffle
     const playerIds = connectedPlayers.map(p => p.id);
-    const shuffledIds = [...playerIds].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < room.impostorCount; i++) {
-      impostorIds.push(shuffledIds[i]);
-    }
+    const shuffledPlayerIds = shuffleArray(playerIds);
+    const impostorIds = shuffledPlayerIds.slice(0, room.impostorCount);
 
     room.impostorNames = connectedPlayers
       .filter(p => impostorIds.includes(p.id))
@@ -383,7 +388,7 @@ io.on('connection', (socket) => {
 
     // 1. Reassign unique random turn orders
     const numbers = Array.from({ length: connectedPlayers.length }, (_, i) => i + 1);
-    const shuffledNumbers = [...numbers].sort(() => Math.random() - 0.5);
+    const shuffledNumbers = shuffleArray(numbers);
     
     connectedPlayers.forEach((player, index) => {
       const roomPlayer = room.players.find(rp => rp.name === player.name);
@@ -393,13 +398,10 @@ io.on('connection', (socket) => {
       }
     });
 
-    // 2. Select random impostors
-    const impostorIds = [];
+    // 2. Select random impostors using true shuffle
     const playerIds = connectedPlayers.map(p => p.id);
-    const shuffledIds = [...playerIds].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < room.impostorCount; i++) {
-      impostorIds.push(shuffledIds[i]);
-    }
+    const shuffledPlayerIds = shuffleArray(playerIds);
+    const impostorIds = shuffledPlayerIds.slice(0, room.impostorCount);
 
     room.impostorNames = connectedPlayers
       .filter(p => impostorIds.includes(p.id))

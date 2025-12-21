@@ -222,19 +222,23 @@
             const turnOrderNumber = document.getElementById('turnOrderNumber');
             const totalPlayers = document.getElementById('totalPlayers');
             
-            // Try to find myself in currentPlayers to get turnOrder
-            const myPlayer = currentPlayers.find(p => p.name === playerName);
-            if (myPlayer && myPlayer.turnOrder) {
-                myTurnOrder = myPlayer.turnOrder;
+            // Try to find myself in currentPlayers to get turnOrder if not already set
+            if (!myTurnOrder && currentPlayers && currentPlayers.length > 0) {
+                const myPlayer = currentPlayers.find(p => p.name === playerName);
+                if (myPlayer && myPlayer.turnOrder) {
+                    myTurnOrder = myPlayer.turnOrder;
+                }
             }
             
-            if (myTurnOrder && currentPlayers.length > 0) {
+            // Show the display
+            turnOrderDisplay.style.display = 'block';
+            
+            if (myTurnOrder && currentPlayers && currentPlayers.length > 0) {
                 turnOrderNumber.textContent = myTurnOrder;
                 totalPlayers.textContent = currentPlayers.length;
-                turnOrderDisplay.style.display = 'block';
             } else {
                 turnOrderNumber.textContent = '-';
-                totalPlayers.textContent = currentPlayers.length || '-';
+                totalPlayers.textContent = (currentPlayers && currentPlayers.length > 0) ? currentPlayers.length : '-';
             }
         }
 
