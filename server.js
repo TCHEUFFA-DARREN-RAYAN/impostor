@@ -150,8 +150,10 @@ io.on('connection', (socket) => {
       impostorCount: 1,
       gameStarted: false,
       currentWordPair: null,
-      currentTurn: 1,
+      currentTurn: 1, // Current turn order (1, 2, 3...)
+      currentSpeaker: 1, // Start with turn 1
       votes: {},
+      votingLocked: true, // Voting is locked by default
       roundEnded: false
     };
 
@@ -338,6 +340,8 @@ io.on('connection', (socket) => {
     room.gameStarted = true;
     room.roundEnded = false;
     room.votes = {};
+    room.votingLocked = true; // Always lock voting when starting a new game
+    room.currentSpeaker = 1; // Reset speaker to 1 when game starts
 
     room.playerWords = {};
     connectedPlayers.forEach(player => {
@@ -363,6 +367,13 @@ io.on('connection', (socket) => {
     });
 
     io.to(roomCode).emit('playerListUpdate', { players: playerList });
+    
+    // Initial speaker update
+    io.to(roomCode).emit('speakerUpdate', { 
+      currentSpeaker: room.currentSpeaker,
+      speakerName: playerList.find(p => p.turnOrder === room.currentSpeaker)?.name || 'Someone'
+    });
+
     console.log(`Game started in room ${roomCode}. Turn orders:`, playerList.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
   });
 
@@ -411,6 +422,8 @@ io.on('connection', (socket) => {
     room.currentWordPair = wordPair;
     room.roundEnded = false;
     room.votes = {};
+    room.votingLocked = true; // Always lock voting when starting a new round
+    room.currentSpeaker = 1; // Reset speaker to 1 when new round starts
 
     room.playerWords = {};
     connectedPlayers.forEach(player => {
@@ -436,7 +449,64 @@ io.on('connection', (socket) => {
     });
 
     io.to(roomCode).emit('playerListUpdate', { players: playerList });
+    
+    // Initial speaker update for new round
+    io.to(roomCode).emit('speakerUpdate', { 
+      currentSpeaker: room.currentSpeaker,
+      speakerName: playerList.find(p => p.turnOrder === room.currentSpeaker)?.name || 'Someone'
+    });
+
     console.log(`New round started in room ${roomCode}. Turn orders:`, playerList.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
+  });
+
+  // Handle next speaker turn
+  socket.on('nextSpeaker', (data) => {
+    const { roomCode } = data;
+    const room = rooms[roomCode];
+
+    if (!room || !room.gameStarted || room.roundEnded) {
+      return;
+    }
+
+    const playerList = getPlayerList(roomCode);
+    // Only cycle through players that actually have a turn order
+    const speakers = playerList
+      .filter(p => p.turnOrder !== null && p.turnOrder !== undefined)
+      .sort((a, b) => a.turnOrder - b.turnOrder);
+    
+    if (speakers.length === 0) return;
+
+    // Find index of current speaker in the sorted list
+    const currentIndex = speakers.findIndex(p => p.turnOrder === room.currentSpeaker);
+    const nextIndex = (currentIndex + 1) % speakers.length;
+    
+    room.currentSpeaker = speakers[nextIndex].turnOrder;
+    const nextSpeaker = speakers[nextIndex];
+
+    io.to(roomCode).emit('speakerUpdate', { 
+      currentSpeaker: room.currentSpeaker,
+      speakerName: nextSpeaker.name
+    });
+    
+    console.log(`Turn moved to speaker ${room.currentSpeaker} (${nextSpeaker.name}) in room ${roomCode}`);
+  });
+
+  // Toggle voting locker (host only)
+  socket.on('toggleVoting', (data) => {
+    const { roomCode } = data;
+    const room = rooms[roomCode];
+
+    if (!room || !isHost(socket, room) || !room.gameStarted || room.roundEnded) {
+      return;
+    }
+
+    room.votingLocked = !room.votingLocked;
+    io.to(roomCode).emit('votingStatusUpdate', { 
+      locked: room.votingLocked,
+      totalPlayers: getConnectedPlayers(roomCode).length,
+      totalVotes: Object.keys(room.votes).length
+    });
+    console.log(`Voting ${room.votingLocked ? 'locked' : 'unlocked'} in room ${roomCode}`);
   });
 
   // Vote for impostor
@@ -444,7 +514,8 @@ io.on('connection', (socket) => {
     const { roomCode, votedPlayerName } = data;
     const room = rooms[roomCode];
 
-    if (!room || !room.gameStarted || room.roundEnded) {
+    if (!room || !room.gameStarted || room.roundEnded || room.votingLocked) {
+      socket.emit('voteError', { message: 'Voting is currently locked' });
       return;
     }
 

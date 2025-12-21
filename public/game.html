@@ -32,8 +32,24 @@
                 <div class="word" id="wordDisplay">---</div>
             </div>
 
+            <div id="speakingSection" style="text-align: center; margin: 20px 0;">
+                <!-- Button ONLY appears for the person whose turn it is -->
+                <button id="speakNowBtn" class="btn btn-primary" style="display: none; width: 100%; max-width: 350px; padding: 25px; font-size: 1.4em; background: #27ae60; border: 4px solid #2ecc71; border-radius: 50px; box-shadow: 0 8px 15px rgba(0,0,0,0.2); color: white; font-weight: 800; cursor: pointer;">
+                    🎤 SPEAK NOW! <br>
+                    <small style="font-size: 0.6em; font-weight: 400;">(Click here when you are finished)</small>
+                </button>
+                
+                <!-- Simple status for everyone else -->
+                <div id="othersSpeakingStatus" style="display: none; font-size: 1.2em; color: #c0392b; font-weight: 800; padding: 10px; background: rgba(255,255,255,0.8); border-radius: 10px; border: 2px dashed #c0392b;">
+                    📢 <span id="otherSpeakerName">...</span> is speaking...
+                </div>
+            </div>
+
             <div id="votingSection" class="voting-section" style="display: none;">
                 <h3>❄️ Find the Grinch! ❄️</h3>
+                <div id="votingLockerMessage" class="voting-locked-message" style="display: none;">
+                    🔒 Voting is currently locked by the host. Discussion time!
+                </div>
                 <div id="playerVoteList" class="player-vote-list"></div>
                 <div id="voteStatus" class="vote-status"></div>
             </div>
@@ -44,6 +60,7 @@
             </div>
 
             <div id="hostControls" class="host-controls" style="display: none;">
+                <button id="toggleVotingBtn" class="btn btn-secondary">🔓 Unlock Voting</button>
                 <button id="endRoundBtn" class="btn btn-secondary">End Round</button>
                 <button id="newRoundBtn" class="btn btn-primary">New Round</button>
                 <button id="endGameBtn" class="btn btn-danger">End Game</button>
@@ -87,6 +104,8 @@
         let currentPlayers = [];
         let myTurnOrder = null;
         let hasVoted = false;
+        let votingLocked = true;
+        let currentSpeakerTurn = 1;
 
         // Rejoin room to receive word if game has started
         function rejoinRoom() {
@@ -138,10 +157,14 @@
             document.getElementById('roundResults').style.display = 'none';
             document.getElementById('votingSection').style.display = 'block';
             hasVoted = false;
+            votingLocked = true; // Default locked
+            updateVotingUI();
             
             // Show end round button for host
             if (isHost) {
                 document.getElementById('endRoundBtn').style.display = 'inline-block';
+                document.getElementById('toggleVotingBtn').style.display = 'inline-block';
+                document.getElementById('toggleVotingBtn').textContent = '🔓 Unlock Voting';
             }
             
             if (data.players) {
@@ -175,10 +198,14 @@
             document.getElementById('roundResults').style.display = 'none';
             document.getElementById('votingSection').style.display = 'block';
             hasVoted = false;
+            votingLocked = true; // Default locked
+            updateVotingUI();
             
             // Show end round button for host
             if (isHost) {
                 document.getElementById('endRoundBtn').style.display = 'inline-block';
+                document.getElementById('toggleVotingBtn').style.display = 'inline-block';
+                document.getElementById('toggleVotingBtn').textContent = '🔓 Unlock Voting';
             }
             
             if (data.players) {
@@ -203,6 +230,30 @@
                 updateScores();
                 setupVoting();
             }
+        });
+
+        socket.on('speakerUpdate', (data) => {
+            currentSpeakerTurn = data.currentSpeaker;
+            const speakNowBtn = document.getElementById('speakNowBtn');
+            const othersSpeakingStatus = document.getElementById('othersSpeakingStatus');
+            const otherSpeakerName = document.getElementById('otherSpeakerName');
+            
+            // Ensure both are numbers for comparison
+            const isMyTurn = parseInt(currentSpeakerTurn) === parseInt(myTurnOrder);
+            console.log('Speaker update received. Current speaker:', currentSpeakerTurn, 'My turn order:', myTurnOrder, 'Is my turn?', isMyTurn);
+
+            if (isMyTurn) {
+                speakNowBtn.style.display = 'block';
+                othersSpeakingStatus.style.display = 'none';
+            } else {
+                speakNowBtn.style.display = 'none';
+                othersSpeakingStatus.style.display = 'block';
+                otherSpeakerName.textContent = data.speakerName;
+            }
+        });
+
+        document.getElementById('speakNowBtn').addEventListener('click', () => {
+            socket.emit('nextSpeaker', { roomCode });
         });
 
         function displayWord(word, isImpostor) {
@@ -276,7 +327,7 @@
 
             votingSection.style.display = 'block';
             playerVoteList.innerHTML = '';
-            hasVoted = false; // Reset voting state
+            // Don't reset hasVoted here, it's reset in gameStarted/newRoundStarted
 
             // Get other players (not yourself)
             const otherPlayers = currentPlayers.filter(p => p.name !== playerName);
@@ -293,9 +344,15 @@
                 voteButton.className = 'btn btn-vote';
                 voteButton.id = `vote-btn-${player.name}`;
                 voteButton.textContent = player.name;
+                
+                // Set initial state based on votingLocked and hasVoted
+                if (votingLocked || hasVoted) {
+                    voteButton.disabled = true;
+                }
+
                 voteButton.onclick = () => {
                     console.log('Vote clicked for:', player.name);
-                    if (!hasVoted) {
+                    if (!hasVoted && !votingLocked) {
                         // Disable all vote buttons
                         const allVoteButtons = document.querySelectorAll('.btn-vote');
                         allVoteButtons.forEach(btn => {
@@ -317,8 +374,42 @@
                 playerVoteList.appendChild(voteButton);
             });
             
+            updateVotingUI();
             console.log('Voting buttons created:', otherPlayers.length);
         }
+
+        function updateVotingUI() {
+            const lockerMessage = document.getElementById('votingLockerMessage');
+            const allVoteButtons = document.querySelectorAll('.btn-vote');
+            
+            if (votingLocked) {
+                lockerMessage.style.display = 'block';
+                allVoteButtons.forEach(btn => {
+                    btn.disabled = true;
+                });
+            } else {
+                lockerMessage.style.display = 'none';
+                if (!hasVoted) {
+                    allVoteButtons.forEach(btn => {
+                        btn.disabled = false;
+                    });
+                }
+            }
+        }
+
+        // Handle voting status updates
+        socket.on('votingStatusUpdate', (data) => {
+            votingLocked = data.locked;
+            updateVotingUI();
+            
+            if (isHost) {
+                const toggleBtn = document.getElementById('toggleVotingBtn');
+                toggleBtn.textContent = votingLocked ? '🔓 Unlock Voting' : '🔒 Lock Voting';
+            }
+
+            const voteStatus = document.getElementById('voteStatus');
+            voteStatus.innerHTML = `<strong>Votes: ${data.totalVotes}/${data.totalPlayers}</strong><br><small>(Everyone must vote to see results)</small>`;
+        });
 
         // Handle vote updates
         socket.on('voteUpdate', (data) => {
@@ -339,9 +430,10 @@
             document.getElementById('votingSection').style.display = 'none';
             document.getElementById('roundResults').style.display = 'block';
             
-            // Hide end round button, show new round button
+            // Hide end round and toggle buttons, show new round button
             if (isHost) {
                 document.getElementById('endRoundBtn').style.display = 'none';
+                document.getElementById('toggleVotingBtn').style.display = 'none';
                 document.getElementById('hostControls').style.display = 'block';
             }
             
@@ -400,6 +492,11 @@
         if (isHost) {
             // Initially hide end round button (only show during active round)
             document.getElementById('endRoundBtn').style.display = 'none';
+            document.getElementById('toggleVotingBtn').style.display = 'none';
+
+            document.getElementById('toggleVotingBtn').addEventListener('click', () => {
+                socket.emit('toggleVoting', { roomCode });
+            });
             
             document.getElementById('endRoundBtn').addEventListener('click', () => {
                 const confirmDiv = document.createElement('div');

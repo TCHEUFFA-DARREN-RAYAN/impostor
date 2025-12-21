@@ -526,6 +526,17 @@ body.impostor-mode .word {
     font-size: 1.2em;
 }
 
+.voting-locked-message {
+    background: #fdf2f2;
+    color: #c0392b;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px dashed #c0392b;
+    margin-bottom: 20px;
+    font-weight: 600;
+    text-align: center;
+}
+
 /* Round Results */
 .round-results {
     margin: 30px 0;
@@ -584,6 +595,38 @@ body.impostor-mode .word {
     border-radius: 4px;
     font-weight: 600;
     color: #c0392b;
+}
+
+/* Speaking Section */
+.speaking-section {
+    margin: 20px 0;
+    padding: 25px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 15px;
+    border: 3px solid #27ae60;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.speaker-info {
+    margin-bottom: 20px;
+}
+
+#currentSpeakerName {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#finishSpeakingBtn {
+    animation: pulse 2s infinite;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4); }
+    50% { transform: scale(1.02); box-shadow: 0 4px 25px rgba(46, 204, 113, 0.6); }
+    100% { transform: scale(1); box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4); }
 }
 
 /* Responsive Design */
