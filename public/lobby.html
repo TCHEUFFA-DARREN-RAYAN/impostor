@@ -123,13 +123,32 @@
             playerList.innerHTML = '';
             playerCount.textContent = data.players.length;
 
-            data.players.forEach(player => {
+            // Sort by turn order if available
+            const sortedPlayers = [...data.players].sort((a, b) => {
+                if (a.turnOrder && b.turnOrder) {
+                    return a.turnOrder - b.turnOrder;
+                }
+                return 0;
+            });
+
+            sortedPlayers.forEach(player => {
                 const playerDiv = document.createElement('div');
                 playerDiv.className = 'player-item';
-                playerDiv.innerHTML = `
-                    <span class="player-name">${player.name}</span>
-                    ${player.isHost ? '<span class="host-badge">Host</span>' : ''}
-                `;
+                let info = `<span class="player-name">${player.name}</span>`;
+                
+                if (player.isHost) {
+                    info += '<span class="host-badge">Host</span>';
+                }
+                
+                if (player.turnOrder) {
+                    info += `<span class="turn-badge">Turn ${player.turnOrder}</span>`;
+                }
+                
+                if (player.score !== undefined && player.score !== null) {
+                    info += `<span class="score-badge">Score: ${player.score}</span>`;
+                }
+                
+                playerDiv.innerHTML = info;
                 playerList.appendChild(playerDiv);
             });
         });

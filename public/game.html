@@ -9,6 +9,20 @@
 <body>
     <div class="container">
         <div class="card game-card">
+            <div class="game-header">
+                <div class="top-left-info">
+                    <div class="score-badge" id="scoreBadge">
+                        <span class="score-label">Your Score</span>
+                        <span class="score-number" id="myScore">0</span>
+                    </div>
+                </div>
+                <div class="top-right-info">
+                    <div class="turn-order" id="turnOrderDisplay">
+                        <span>Turn: <strong id="turnOrderNumber">-</strong> / <strong id="totalPlayers">-</strong></span>
+                    </div>
+                </div>
+            </div>
+
             <div id="impostorBadge" class="impostor-badge" style="display: none;">
                 YOU ARE THE IMPOSTOR
             </div>
@@ -18,7 +32,19 @@
                 <div class="word" id="wordDisplay">---</div>
             </div>
 
+            <div id="votingSection" class="voting-section" style="display: none;">
+                <h3>Vote for the Impostor</h3>
+                <div id="playerVoteList" class="player-vote-list"></div>
+                <div id="voteStatus" class="vote-status"></div>
+            </div>
+
+            <div id="roundResults" class="round-results" style="display: none;">
+                <h3>Round Results</h3>
+                <div id="resultsContent"></div>
+            </div>
+
             <div id="hostControls" class="host-controls" style="display: none;">
+                <button id="endRoundBtn" class="btn btn-secondary">End Round</button>
                 <button id="newRoundBtn" class="btn btn-primary">New Round</button>
                 <button id="endGameBtn" class="btn btn-danger">End Game</button>
             </div>
@@ -41,23 +67,26 @@
         const socket = io();
         window.gameSocket = socket;
 
-        // Get player name from sessionStorage or prompt
+        // Get player name from sessionStorage or URL
         let playerName = sessionStorage.getItem('playerName');
         if (!playerName) {
-            // If no sessionStorage (incognito/new tab), try to get from URL or prompt
+            // If no sessionStorage (incognito/new tab), try to get from URL
             if (isHost) {
                 playerName = 'Host';
             } else {
-                // For non-host, we need to prompt or get from somewhere
-                // Try to get from a URL parameter if available, otherwise use a default
                 const urlName = urlParams.get('name');
-                playerName = urlName || prompt('Enter your name (same as when you joined):') || 'Player';
+                playerName = urlName || 'Player';
             }
             // Store for future use
             if (playerName) {
                 sessionStorage.setItem('playerName', playerName);
             }
         }
+
+        // Game state
+        let currentPlayers = [];
+        let myTurnOrder = null;
+        let hasVoted = false;
 
         // Rejoin room to receive word if game has started
         function rejoinRoom() {
@@ -83,7 +112,13 @@
             console.error('Join error:', data.message);
             // If game already started error, that's okay - we'll get the word on rejoin
             if (data.message !== 'Game has already started') {
-                alert(data.message);
+                // Show error in a div instead of alert
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.textContent = data.message;
+                errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+                document.body.appendChild(errorDiv);
+                setTimeout(() => errorDiv.remove(), 5000);
             }
         });
 
@@ -98,12 +133,76 @@
 
         // Display word and impostor status
         socket.on('gameStarted', (data) => {
+            console.log('Game started with data:', data);
             displayWord(data.word, data.isImpostor);
+            document.getElementById('roundResults').style.display = 'none';
+            document.getElementById('votingSection').style.display = 'block';
+            hasVoted = false;
+            
+            // Show end round button for host
+            if (isHost) {
+                document.getElementById('endRoundBtn').style.display = 'inline-block';
+            }
+            
+            if (data.players) {
+                currentPlayers = data.players;
+                
+                // Get turnOrder - prioritize direct data, then players array
+                if (data.turnOrder !== null && data.turnOrder !== undefined) {
+                    myTurnOrder = parseInt(data.turnOrder);
+                    console.log('Turn order received directly:', myTurnOrder);
+                } else {
+                    // Try to get from players array
+                    const myPlayer = data.players.find(p => p.name === playerName);
+                    if (myPlayer && myPlayer.turnOrder !== null && myPlayer.turnOrder !== undefined) {
+                        myTurnOrder = parseInt(myPlayer.turnOrder);
+                        console.log('Turn order from players array:', myTurnOrder);
+                    } else {
+                        console.log('No turn order found for player:', playerName);
+                    }
+                }
+                
+                updateTurnOrderDisplay();
+                updateScores();
+                setupVoting();
+            }
         });
 
         socket.on('newRoundStarted', (data) => {
+            console.log('New round started with data:', data);
             displayWord(data.word, data.isImpostor);
             document.getElementById('guestMessage').style.display = 'none';
+            document.getElementById('roundResults').style.display = 'none';
+            document.getElementById('votingSection').style.display = 'block';
+            hasVoted = false;
+            
+            // Show end round button for host
+            if (isHost) {
+                document.getElementById('endRoundBtn').style.display = 'inline-block';
+            }
+            
+            if (data.players) {
+                currentPlayers = data.players;
+                
+                // Get turnOrder - prioritize direct data, then players array
+                if (data.turnOrder !== null && data.turnOrder !== undefined) {
+                    myTurnOrder = parseInt(data.turnOrder);
+                    console.log('Turn order received directly:', myTurnOrder);
+                } else {
+                    // Try to get from players array
+                    const myPlayer = data.players.find(p => p.name === playerName);
+                    if (myPlayer && myPlayer.turnOrder !== null && myPlayer.turnOrder !== undefined) {
+                        myTurnOrder = parseInt(myPlayer.turnOrder);
+                        console.log('Turn order from players array:', myTurnOrder);
+                    } else {
+                        console.log('No turn order found for player:', playerName);
+                    }
+                }
+                
+                updateTurnOrderDisplay();
+                updateScores();
+                setupVoting();
+            }
         });
 
         function displayWord(word, isImpostor) {
@@ -118,35 +217,297 @@
             }
         }
 
-        // New round (host only)
+        function updateTurnOrderDisplay() {
+            const turnOrderDisplay = document.getElementById('turnOrderDisplay');
+            const turnOrderNumber = document.getElementById('turnOrderNumber');
+            const totalPlayers = document.getElementById('totalPlayers');
+            
+            console.log('Updating turn order display. myTurnOrder:', myTurnOrder, 'currentPlayers:', currentPlayers);
+            
+            // Try to get turnOrder from currentPlayers if myTurnOrder is not set
+            if ((!myTurnOrder || myTurnOrder === null || myTurnOrder === undefined) && currentPlayers && currentPlayers.length > 0) {
+                const myPlayer = currentPlayers.find(p => p.name === playerName);
+                if (myPlayer && (myPlayer.turnOrder !== null && myPlayer.turnOrder !== undefined)) {
+                    myTurnOrder = myPlayer.turnOrder;
+                    console.log('Found turnOrder from currentPlayers:', myTurnOrder);
+                }
+            }
+            
+            // Always show the display
+            turnOrderDisplay.style.display = 'block';
+            
+            if (myTurnOrder && myTurnOrder !== null && myTurnOrder !== undefined && currentPlayers && currentPlayers.length > 0) {
+                turnOrderNumber.textContent = myTurnOrder;
+                totalPlayers.textContent = currentPlayers.length;
+                console.log('Turn order displayed:', myTurnOrder, 'of', currentPlayers.length);
+            } else {
+                console.log('Turn order not available yet. myTurnOrder:', myTurnOrder, 'currentPlayers length:', currentPlayers ? currentPlayers.length : 0);
+                // Show placeholder until we get the real value
+                turnOrderNumber.textContent = '-';
+                totalPlayers.textContent = currentPlayers && currentPlayers.length > 0 ? currentPlayers.length : '-';
+            }
+        }
+
+        function updateScores() {
+            const scoreBadge = document.getElementById('scoreBadge');
+            const myScoreElement = document.getElementById('myScore');
+            
+            // Always show score badge
+            scoreBadge.style.display = 'block';
+            
+            if (currentPlayers && currentPlayers.length > 0) {
+                // Find current player's score
+                const myPlayer = currentPlayers.find(p => p.name === playerName);
+                if (myPlayer) {
+                    myScoreElement.textContent = myPlayer.score || 0;
+                } else {
+                    myScoreElement.textContent = '0';
+                }
+            } else {
+                myScoreElement.textContent = '0';
+            }
+        }
+
+        function setupVoting() {
+            const votingSection = document.getElementById('votingSection');
+            const playerVoteList = document.getElementById('playerVoteList');
+            
+            console.log('Setting up voting. Current players:', currentPlayers, 'Player name:', playerName);
+            
+            if (!currentPlayers || currentPlayers.length < 2) {
+                console.log('Not enough players for voting');
+                votingSection.style.display = 'none';
+                return;
+            }
+
+            votingSection.style.display = 'block';
+            playerVoteList.innerHTML = '';
+            hasVoted = false; // Reset voting state
+
+            // Get other players (not yourself)
+            const otherPlayers = currentPlayers.filter(p => p.name !== playerName);
+            console.log('Other players to vote for:', otherPlayers);
+            
+            if (otherPlayers.length === 0) {
+                console.log('No other players to vote for');
+                votingSection.style.display = 'none';
+                return;
+            }
+            
+            otherPlayers.forEach(player => {
+                const voteButton = document.createElement('button');
+                voteButton.className = 'btn btn-vote';
+                voteButton.id = `vote-btn-${player.name}`;
+                voteButton.textContent = player.name;
+                voteButton.onclick = () => {
+                    console.log('Vote clicked for:', player.name);
+                    if (!hasVoted) {
+                        // Disable all vote buttons
+                        const allVoteButtons = document.querySelectorAll('.btn-vote');
+                        allVoteButtons.forEach(btn => {
+                            btn.disabled = true;
+                        });
+                        
+                        // Mark selected button
+                        voteButton.classList.add('voted');
+                        voteButton.textContent = `${player.name} ✓ (Your Vote)`;
+                        
+                        socket.emit('voteImpostor', {
+                            roomCode: roomCode,
+                            votedPlayerName: player.name
+                        });
+                        hasVoted = true;
+                        console.log('Vote sent for:', player.name);
+                    }
+                };
+                playerVoteList.appendChild(voteButton);
+            });
+            
+            console.log('Voting buttons created:', otherPlayers.length);
+        }
+
+        // Handle vote updates
+        socket.on('voteUpdate', (data) => {
+            const voteStatus = document.getElementById('voteStatus');
+            voteStatus.innerHTML = `<strong>Votes: ${data.totalVotes}/${data.totalPlayers}</strong>`;
+            
+            // Update vote buttons to show who voted for whom (if visible)
+            if (data.votes) {
+                Object.keys(data.votes).forEach(voterName => {
+                    const votedPlayerName = data.votes[voterName];
+                    // We can't show individual votes to prevent cheating, but we show the count
+                });
+            }
+        });
+
+        // Handle round ended
+        socket.on('roundEnded', (data) => {
+            document.getElementById('votingSection').style.display = 'none';
+            document.getElementById('roundResults').style.display = 'block';
+            
+            // Hide end round button, show new round button
+            if (isHost) {
+                document.getElementById('endRoundBtn').style.display = 'none';
+                document.getElementById('hostControls').style.display = 'block';
+            }
+            
+            const resultsContent = document.getElementById('resultsContent');
+            let html = '';
+            
+            if (data.impostorFound) {
+                html += '<p class="result-success">✅ Impostor Found!</p>';
+                html += '<p>Non-impostors gain 1 point. Impostor gains 0 points.</p>';
+            } else {
+                html += '<p class="result-fail">❌ Impostor Not Found!</p>';
+                html += '<p>Impostor gains 1 point. Others gain 0 points.</p>';
+            }
+            
+            html += '<h4>Vote Results:</h4><ul>';
+            // Show all players, even if they got 0 votes
+            data.players.forEach(player => {
+                const voteCount = data.voteCounts[player.name] || 0;
+                html += `<li>${player.name}: ${voteCount} vote(s)</li>`;
+            });
+            html += '</ul>';
+            
+            html += '<h4>Impostor(s) were:</h4><ul>';
+            data.impostorNames.forEach(name => {
+                html += `<li><strong>${name}</strong></li>`;
+            });
+            html += '</ul>';
+            
+            html += '<h4>Updated Scores:</h4><ul>';
+            // Sort by score
+            const sortedPlayers = [...data.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+            sortedPlayers.forEach(player => {
+                const isMe = player.name === playerName;
+                html += `<li class="${isMe ? 'my-score-result' : ''}">${player.name}${isMe ? ' (You)' : ''}: <strong>${player.score || 0}</strong> point(s)</li>`;
+            });
+            html += '</ul>';
+            
+            resultsContent.innerHTML = html;
+            
+            // Update local player list and scores
+            currentPlayers = data.players;
+            updateScores();
+        });
+
+        // Handle vote errors
+        socket.on('voteError', (data) => {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = data.message;
+            errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 3000);
+        });
+
+        // Host controls (host only)
         if (isHost) {
+            // Initially hide end round button (only show during active round)
+            document.getElementById('endRoundBtn').style.display = 'none';
+            
+            document.getElementById('endRoundBtn').addEventListener('click', () => {
+                const confirmDiv = document.createElement('div');
+                confirmDiv.className = 'modal';
+                confirmDiv.innerHTML = `
+                    <div class="modal-content">
+                        <h2>End Round?</h2>
+                        <p>Are you sure you want to end the current round? All players will vote now.</p>
+                        <div class="modal-buttons">
+                            <button id="confirmEndRound" class="btn btn-primary">Yes, End Round</button>
+                            <button id="cancelEndRound" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(confirmDiv);
+                
+                document.getElementById('confirmEndRound').addEventListener('click', () => {
+                    socket.emit('endRound', { roomCode });
+                    confirmDiv.remove();
+                });
+                
+                document.getElementById('cancelEndRound').addEventListener('click', () => {
+                    confirmDiv.remove();
+                });
+            });
+
             document.getElementById('newRoundBtn').addEventListener('click', () => {
                 socket.emit('newRound', { roomCode });
             });
 
             document.getElementById('endGameBtn').addEventListener('click', () => {
-                if (confirm('Are you sure you want to end the game?')) {
+                const confirmDiv = document.createElement('div');
+                confirmDiv.className = 'modal';
+                confirmDiv.innerHTML = `
+                    <div class="modal-content">
+                        <h2>End Game?</h2>
+                        <p>Are you sure you want to end the game?</p>
+                        <div class="modal-buttons">
+                            <button id="confirmEndGame" class="btn btn-danger">Yes, End Game</button>
+                            <button id="cancelEndGame" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(confirmDiv);
+                
+                document.getElementById('confirmEndGame').addEventListener('click', () => {
                     socket.emit('endGame', { roomCode });
-                }
+                    confirmDiv.remove();
+                });
+                
+                document.getElementById('cancelEndGame').addEventListener('click', () => {
+                    confirmDiv.remove();
+                });
             });
         }
 
         // Handle game ended
-        socket.on('gameEnded', () => {
-            socket.disconnect();
-            window.location.href = 'index.html';
+        socket.on('gameEnded', (data) => {
+            let message = 'Game Ended!\n\nFinal Scores:\n';
+            if (data && data.players) {
+                const sortedPlayers = [...data.players].sort((a, b) => (b.score || 0) - (a.score || 0));
+                sortedPlayers.forEach((player, index) => {
+                    message += `${index + 1}. ${player.name}: ${player.score || 0} point(s)\n`;
+                });
+            }
+            // Show message in div
+            const endDiv = document.createElement('div');
+            endDiv.className = 'game-ended-message';
+            endDiv.innerHTML = '<h2>Game Ended!</h2><h3>Final Scores:</h3>' + 
+                (data && data.players ? 
+                    data.players.sort((a, b) => (b.score || 0) - (a.score || 0))
+                        .map((p, i) => `<p>${i + 1}. ${p.name}: ${p.score || 0} points</p>`).join('') 
+                    : '');
+            endDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 400px; text-align: center;';
+            document.body.appendChild(endDiv);
+            setTimeout(() => {
+                socket.disconnect();
+                window.location.href = 'index.html';
+            }, 5000);
         });
 
         // Handle host left
         socket.on('hostLeft', () => {
-            alert('Host left the game. Returning to home...');
-            socket.disconnect();
-            window.location.href = 'index.html';
+            const leftDiv = document.createElement('div');
+            leftDiv.className = 'error-message';
+            leftDiv.textContent = 'Host left the game. Returning to home...';
+            leftDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(leftDiv);
+            setTimeout(() => {
+                socket.disconnect();
+                window.location.href = 'index.html';
+            }, 3000);
         });
 
         // Handle errors
         socket.on('gameError', (data) => {
-            alert(data.message);
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = data.message;
+            errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
         });
     </script>
 </body>

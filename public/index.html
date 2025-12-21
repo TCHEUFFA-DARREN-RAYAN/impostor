@@ -16,6 +16,33 @@
                 <button id="createBtn" class="btn btn-primary">Create Game</button>
                 <button id="joinBtn" class="btn btn-secondary">Join Game</button>
             </div>
+
+            <!-- Name Input Modal for Create -->
+            <div id="createNameModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h2>Enter Your Name</h2>
+                    <input type="text" id="createNameInput" class="input" placeholder="Your name (or leave blank for 'Host')" maxlength="20">
+                    <div class="modal-buttons">
+                        <button id="createNameSubmit" class="btn btn-primary">Create</button>
+                        <button id="createNameCancel" class="btn btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Join Modal -->
+            <div id="joinModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h2>Join Game</h2>
+                    <label for="joinRoomCodeInput">Room Code:</label>
+                    <input type="text" id="joinRoomCodeInput" class="input" placeholder="Enter room code" maxlength="6" style="text-transform: uppercase;">
+                    <label for="joinNameInput" style="margin-top: 15px;">Your Name:</label>
+                    <input type="text" id="joinNameInput" class="input" placeholder="Enter your name" maxlength="20">
+                    <div class="modal-buttons">
+                        <button id="joinSubmit" class="btn btn-primary">Join</button>
+                        <button id="joinCancel" class="btn btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -28,24 +55,62 @@
         // Store socket globally for use in other pages
         window.gameSocket = socket;
 
+        // Create game
         document.getElementById('createBtn').addEventListener('click', () => {
-            const name = prompt('Enter your name (or leave blank for "Host"):') || 'Host';
-            // Store name before creating
+            document.getElementById('createNameModal').style.display = 'flex';
+            document.getElementById('createNameInput').focus();
+        });
+
+        document.getElementById('createNameSubmit').addEventListener('click', () => {
+            const name = document.getElementById('createNameInput').value.trim() || 'Host';
             sessionStorage.setItem('playerName', name);
             sessionStorage.setItem('isHost', 'true');
+            document.getElementById('createNameModal').style.display = 'none';
             socket.emit('createRoom', { name });
         });
 
+        document.getElementById('createNameCancel').addEventListener('click', () => {
+            document.getElementById('createNameModal').style.display = 'none';
+        });
+
+        document.getElementById('createNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('createNameSubmit').click();
+            }
+        });
+
+        // Join game
         document.getElementById('joinBtn').addEventListener('click', () => {
-            const roomCode = prompt('Enter room code:');
-            if (roomCode) {
-                const name = prompt('Enter your name:');
-                if (name) {
-                    // Store name before joining
-                    sessionStorage.setItem('playerName', name);
-                    sessionStorage.setItem('isHost', 'false');
-                    socket.emit('joinRoom', { roomCode: roomCode.toUpperCase(), name });
-                }
+            document.getElementById('joinModal').style.display = 'flex';
+            document.getElementById('joinRoomCodeInput').focus();
+        });
+
+        document.getElementById('joinSubmit').addEventListener('click', () => {
+            const roomCode = document.getElementById('joinRoomCodeInput').value.trim().toUpperCase();
+            const name = document.getElementById('joinNameInput').value.trim();
+            if (roomCode && name) {
+                sessionStorage.setItem('playerName', name);
+                sessionStorage.setItem('isHost', 'false');
+                document.getElementById('joinModal').style.display = 'none';
+                socket.emit('joinRoom', { roomCode, name });
+            } else {
+                alert('Please enter both room code and name');
+            }
+        });
+
+        document.getElementById('joinCancel').addEventListener('click', () => {
+            document.getElementById('joinModal').style.display = 'none';
+        });
+
+        document.getElementById('joinRoomCodeInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('joinNameInput').focus();
+            }
+        });
+
+        document.getElementById('joinNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('joinSubmit').click();
             }
         });
 
@@ -63,7 +128,12 @@
 
         // Handle errors
         socket.on('joinError', (data) => {
-            alert(data.message);
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = data.message;
+            errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
         });
     </script>
 </body>

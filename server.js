@@ -93,8 +93,25 @@ function getPlayerList(roomCode) {
   return rooms[roomCode].players.map(p => ({
     id: p.id,
     name: p.name,
-    isHost: p.isHost
+    isHost: p.isHost,
+    turnOrder: p.turnOrder,
+    score: p.score || 0
   }));
+}
+
+// Get connected players for a room (more reliable check)
+function getConnectedPlayers(roomCode) {
+  if (!rooms[roomCode]) return [];
+  const room = rooms[roomCode];
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
+  
+  if (!socketsInRoom) return [];
+  
+  // Return all players whose socket IDs are in the room and socket is connected
+  return room.players.filter(player => {
+    const socket = io.sockets.sockets.get(player.id);
+    return socket && socket.connected && socketsInRoom.has(player.id);
+  });
 }
 
 // Check if socket is the host of a room
@@ -115,12 +132,17 @@ io.on('connection', (socket) => {
       players: [{
         id: socket.id,
         name: data.name || 'Host',
-        isHost: true
+        isHost: true,
+        score: 0,
+        turnOrder: 1
       }],
       host: socket.id,
       impostorCount: 1,
       gameStarted: false,
-      currentWordPair: null
+      currentWordPair: null,
+      currentTurn: 1,
+      votes: {},
+      roundEnded: false
     };
 
     socket.join(roomCode);
@@ -152,7 +174,9 @@ io.on('connection', (socket) => {
         const wordData = room.playerWords[player.name];
         io.to(socket.id).emit('gameStarted', {
           word: wordData.word,
-          isImpostor: wordData.isImpostor
+          isImpostor: wordData.isImpostor,
+          turnOrder: player.turnOrder,
+          players: getPlayerList(roomCode)
         });
       } else if (room.gameStarted && room.currentWordPair) {
         // Fallback to old method
@@ -160,9 +184,13 @@ io.on('connection', (socket) => {
         const isImpostor = room.impostorNames?.includes(player.name) ?? false;
         io.to(socket.id).emit('gameStarted', {
           word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
-          isImpostor: isImpostor
+          isImpostor: isImpostor,
+          turnOrder: player.turnOrder,
+          players: getPlayerList(roomCode)
         });
-      } else {
+      }
+      
+      if (!room.gameStarted) {
         io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
       }
       return;
@@ -189,16 +217,22 @@ io.on('connection', (socket) => {
         const wordData = room.playerWords[name];
         io.to(socket.id).emit('gameStarted', {
           word: wordData.word,
-          isImpostor: wordData.isImpostor
+          isImpostor: wordData.isImpostor,
+          turnOrder: player.turnOrder,
+          players: getPlayerList(roomCode)
         });
       } else if (room.gameStarted && room.currentWordPair) {
         // Fallback to old method
         const isImpostor = room.impostorNames?.includes(name) ?? false;
         io.to(socket.id).emit('gameStarted', {
           word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
-          isImpostor: isImpostor
+          isImpostor: isImpostor,
+          turnOrder: player.turnOrder,
+          players: getPlayerList(roomCode)
         });
-      } else {
+      }
+      
+      if (!room.gameStarted) {
         io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
       }
       console.log(`${name} reconnected to room ${roomCode}`);
@@ -218,10 +252,14 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Assign turn order based on number of players
+    const turnOrder = room.players.length + 1;
     room.players.push({
       id: socket.id,
       name: name,
-      isHost: false
+      isHost: false,
+      score: 0,
+      turnOrder: turnOrder
     });
 
     socket.join(roomCode);
@@ -254,11 +292,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Filter to only count players that are actually in the socket room (connected)
-    const connectedPlayers = room.players.filter(player => {
-      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
-      return socketsInRoom && socketsInRoom.has(player.id);
-    });
+    // Use the more reliable connected players check
+    const connectedPlayers = getConnectedPlayers(roomCode);
 
     if (connectedPlayers.length < 2) {
       socket.emit('gameError', { message: `Need at least 2 players to start. Currently ${connectedPlayers.length} player(s) connected.` });
@@ -269,6 +304,28 @@ io.on('connection', (socket) => {
       socket.emit('gameError', { message: 'Too many impostors for this many players' });
       return;
     }
+
+    // Assign random turn orders (1 to number of players, no duplicates)
+    // Get connected room players (not just connectedPlayers array)
+    const connectedRoomPlayers = room.players.filter(rp => {
+      const socket = io.sockets.sockets.get(rp.id);
+      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
+      return socket && socket.connected && socketsInRoom && socketsInRoom.has(rp.id);
+    });
+    
+    // Shuffle to assign random turn orders
+    const shuffledRoomPlayers = [...connectedRoomPlayers].sort(() => Math.random() - 0.5);
+    
+    // Assign turn orders (1, 2, 3, etc. in random order)
+    shuffledRoomPlayers.forEach((roomPlayer, index) => {
+      roomPlayer.turnOrder = index + 1;
+      // Ensure score exists
+      if (roomPlayer.score === undefined || roomPlayer.score === null) {
+        roomPlayer.score = 0;
+      }
+    });
+    
+    console.log(`Assigned turn orders in room ${roomCode}:`, shuffledRoomPlayers.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
 
     // Select random impostors from connected players
     const impostorIds = [];
@@ -288,6 +345,9 @@ io.on('connection', (socket) => {
     const wordPair = getRandomWordPair();
     room.currentWordPair = wordPair;
     room.gameStarted = true;
+    room.currentTurn = 1;
+    room.votes = {};
+    room.roundEnded = false;
 
     // Store word assignments by player name for reconnection
     room.playerWords = {};
@@ -299,14 +359,25 @@ io.on('connection', (socket) => {
       };
     });
 
-    // Send words to each connected player by socket ID
+    // Send words and game state to each connected player by socket ID
     connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
+      // Get turnOrder from room.players (where it was actually set)
+      const roomPlayer = room.players.find(rp => rp.id === player.id || rp.name === player.name);
+      const turnOrder = roomPlayer ? roomPlayer.turnOrder : null;
+      
+      console.log(`Sending gameStarted to ${player.name} (${player.id}): turnOrder=${turnOrder}`);
+      
       io.to(player.id).emit('gameStarted', {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
-        isImpostor: isImpostor
+        isImpostor: isImpostor,
+        turnOrder: turnOrder,
+        players: getPlayerList(roomCode)
       });
     });
+
+    // Broadcast player list update with scores and turn orders
+    io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
 
     console.log(`Game started in room ${roomCode}`);
   });
@@ -320,11 +391,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Filter to only count players that are actually in the socket room (connected)
-    const connectedPlayers = room.players.filter(player => {
-      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
-      return socketsInRoom && socketsInRoom.has(player.id);
-    });
+    // Use the more reliable connected players check
+    const connectedPlayers = getConnectedPlayers(roomCode);
 
     if (connectedPlayers.length < 2) {
       socket.emit('gameError', { message: `Need at least 2 players. Currently ${connectedPlayers.length} player(s) connected.` });
@@ -336,9 +404,41 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Update player IDs to only use connected players
-    // This ensures we're working with current socket connections
-    room.players = connectedPlayers;
+    // Update room.players to only include connected players (but preserve scores)
+    const connectedPlayerNames = new Set(connectedPlayers.map(p => p.name));
+    room.players = room.players
+      .filter(p => connectedPlayerNames.has(p.name))
+      .map(p => {
+        // Find the connected player to get updated socket ID
+        const connectedPlayer = connectedPlayers.find(cp => cp.name === p.name);
+        if (connectedPlayer) {
+          p.id = connectedPlayer.id; // Update socket ID
+          return p;
+        }
+        return p;
+      });
+
+    // Reassign random turn orders for connected players (preserve scores)
+    // Get connected room players (already filtered above)
+    const connectedRoomPlayers = room.players.filter(rp => {
+      const socket = io.sockets.sockets.get(rp.id);
+      const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
+      return socket && socket.connected && socketsInRoom && socketsInRoom.has(rp.id);
+    });
+    
+    // Shuffle to assign random turn orders
+    const shuffledRoomPlayers = [...connectedRoomPlayers].sort(() => Math.random() - 0.5);
+    
+    // Assign turn orders (1, 2, 3, etc. in random order)
+    shuffledRoomPlayers.forEach((roomPlayer, index) => {
+      roomPlayer.turnOrder = index + 1;
+      // Ensure score exists and is preserved
+      if (roomPlayer.score === undefined || roomPlayer.score === null) {
+        roomPlayer.score = 0;
+      }
+    });
+    
+    console.log(`Assigned turn orders in new round ${roomCode}:`, shuffledRoomPlayers.map(p => `${p.name}: ${p.turnOrder}`).join(', '));
 
     // Select new random impostors from connected players
     const impostorIds = [];
@@ -357,6 +457,9 @@ io.on('connection', (socket) => {
     // Get new random word pair
     const wordPair = getRandomWordPair();
     room.currentWordPair = wordPair;
+    room.currentTurn = 1;
+    room.votes = {};
+    room.roundEnded = false;
 
     // Store word assignments by player name for reconnection
     room.playerWords = {};
@@ -368,17 +471,143 @@ io.on('connection', (socket) => {
       };
     });
 
-    // Send new words to each connected player
+    // Send new words and game state to each connected player
     connectedPlayers.forEach(player => {
       const isImpostor = impostorIds.includes(player.id);
+      // Get turnOrder from room.players (where it was actually set)
+      const roomPlayer = room.players.find(rp => rp.id === player.id || rp.name === player.name);
+      const turnOrder = roomPlayer ? roomPlayer.turnOrder : null;
+      
+      console.log(`Sending newRoundStarted to ${player.name} (${player.id}): turnOrder=${turnOrder}`);
+      
       io.to(player.id).emit('newRoundStarted', {
         word: isImpostor ? wordPair.impostorWord : wordPair.mainWord,
-        isImpostor: isImpostor
+        isImpostor: isImpostor,
+        turnOrder: turnOrder,
+        players: getPlayerList(roomCode)
       });
     });
 
+    // Broadcast player list update with scores and turn orders
+    io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+
     console.log(`New round started in room ${roomCode}`);
   });
+
+  // Vote for impostor
+  socket.on('voteImpostor', (data) => {
+    const { roomCode, votedPlayerName } = data;
+    const room = rooms[roomCode];
+
+    if (!room || !room.gameStarted || room.roundEnded) {
+      return;
+    }
+
+    // Find the voting player
+    const votingPlayer = room.players.find(p => p.id === socket.id);
+    if (!votingPlayer) {
+      return;
+    }
+
+    // Check if player already voted
+    if (room.votes[votingPlayer.name]) {
+      socket.emit('voteError', { message: 'You have already voted' });
+      return;
+    }
+
+    // Record the vote
+    room.votes[votingPlayer.name] = votedPlayerName;
+
+    // Broadcast vote update
+    io.to(roomCode).emit('voteUpdate', {
+      votes: room.votes,
+      totalVotes: Object.keys(room.votes).length,
+      totalPlayers: getConnectedPlayers(roomCode).length
+    });
+
+    // Check if all players have voted
+    const connectedPlayers = getConnectedPlayers(roomCode);
+    if (Object.keys(room.votes).length >= connectedPlayers.length) {
+      // All players voted, end the round
+      endRound(roomCode);
+    }
+  });
+
+  // End round (host can manually end round)
+  socket.on('endRound', (data) => {
+    const { roomCode } = data;
+    const room = rooms[roomCode];
+
+    if (!room || !isHost(socket, room) || !room.gameStarted || room.roundEnded) {
+      return;
+    }
+
+    endRound(roomCode);
+  });
+
+  // Function to end round and calculate scores
+  function endRound(roomCode) {
+    const room = rooms[roomCode];
+    if (!room || room.roundEnded) {
+      return;
+    }
+
+    room.roundEnded = true;
+
+    // Count votes for each player
+    const voteCounts = {};
+    Object.values(room.votes).forEach(votedName => {
+      voteCounts[votedName] = (voteCounts[votedName] || 0) + 1;
+    });
+
+    // Find the player(s) with the most votes
+    const maxVotes = Math.max(...Object.values(voteCounts), 0);
+    const mostVotedPlayers = Object.keys(voteCounts).filter(name => voteCounts[name] === maxVotes);
+
+    // Check if any impostor was found
+    const impostorFound = mostVotedPlayers.some(name => room.impostorNames.includes(name));
+
+    // Calculate scores
+    const connectedPlayers = getConnectedPlayers(roomCode);
+    connectedPlayers.forEach(player => {
+      const roomPlayer = room.players.find(rp => rp.name === player.name);
+      if (roomPlayer) {
+        const isImpostor = room.impostorNames.includes(player.name);
+        
+        if (impostorFound) {
+          // Impostor was found
+          if (isImpostor) {
+            // Impostor gets 0 points
+            roomPlayer.score += 0;
+          } else {
+            // Non-impostors get 1 point
+            roomPlayer.score += 1;
+          }
+        } else {
+          // Impostor was not found
+          if (isImpostor) {
+            // Impostor gets 1 point
+            roomPlayer.score += 1;
+          } else {
+            // Non-impostors get 0 points
+            roomPlayer.score += 0;
+          }
+        }
+      }
+    });
+
+    // Broadcast round results
+    io.to(roomCode).emit('roundEnded', {
+      votes: room.votes,
+      voteCounts: voteCounts,
+      mostVotedPlayers: mostVotedPlayers,
+      impostorNames: room.impostorNames,
+      impostorFound: impostorFound,
+      players: getPlayerList(roomCode)
+    });
+
+    console.log(`Round ended in room ${roomCode}. Impostor found: ${impostorFound}`);
+  }
 
   // End game
   socket.on('endGame', (data) => {
@@ -389,8 +618,10 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Notify all players
-    io.to(roomCode).emit('gameEnded');
+    // Notify all players with final scores
+    io.to(roomCode).emit('gameEnded', {
+      players: getPlayerList(roomCode)
+    });
     
     // Clean up room
     delete rooms[roomCode];
