@@ -271,6 +271,36 @@ h1 {
     letter-spacing: 0.5px;
 }
 
+.btn-kick {
+    background: #e74c3c;
+    border: 2px solid #c0392b;
+    color: white;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-kick:hover {
+    background: #c0392b;
+    transform: translateY(-1px);
+}
+
+.disconnect-badge {
+    margin-left: 12px;
+    font-size: 0.7em;
+    color: #e67e22;
+    background: rgba(230, 126, 34, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
 /* Game Card */
 .game-card {
     min-height: 400px;

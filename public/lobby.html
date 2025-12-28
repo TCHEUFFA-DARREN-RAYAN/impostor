@@ -148,7 +148,30 @@
                     info += `<span class="score-badge">Score: ${player.score}</span>`;
                 }
                 
+                if (!player.isConnected) {
+                    info += '<span class="disconnect-badge">Disconnected</span>';
+                }
+
                 playerDiv.innerHTML = info;
+
+                if (isHost && !player.isHost) {
+                    const kickButton = document.createElement('button');
+                    kickButton.className = 'btn-kick';
+                    kickButton.textContent = 'Kick';
+                    kickButton.addEventListener('click', () => {
+                        kickButton.disabled = true;
+                        kickButton.textContent = 'Removing...';
+                        socket.emit('kickPlayer', { roomCode, playerId: player.id });
+                        setTimeout(() => {
+                            if (kickButton) {
+                                kickButton.disabled = false;
+                                kickButton.textContent = 'Kick';
+                            }
+                        }, 1500);
+                    });
+                    playerDiv.appendChild(kickButton);
+                }
+
                 playerList.appendChild(playerDiv);
             });
         });
@@ -168,6 +191,20 @@
             errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
             document.body.appendChild(errorDiv);
             setTimeout(() => errorDiv.remove(), 5000);
+        });
+
+        socket.on('kickedFromRoom', (data) => {
+            const message = data?.message || 'You were removed from the lobby.';
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'error-message';
+            infoDiv.textContent = message;
+            infoDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(infoDiv);
+            setTimeout(() => {
+                infoDiv.remove();
+                socket.disconnect();
+                window.location.href = 'index.html';
+            }, 2500);
         });
 
         // Handle host left
@@ -205,6 +242,7 @@
             document.body.appendChild(confirmDiv);
             
             document.getElementById('confirmLeave').addEventListener('click', () => {
+                socket.emit('leaveRoom', { roomCode });
                 socket.disconnect();
                 window.location.href = 'index.html';
             });

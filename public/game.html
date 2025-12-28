@@ -69,6 +69,7 @@
             <div id="guestMessage" class="guest-message" style="display: none;">
                 <p>Waiting for host to start next round...</p>
             </div>
+            <button id="leaveGameBtn" class="btn btn-danger" style="margin-top: 16px;">Leave Game</button>
         </div>
     </div>
 
@@ -254,6 +255,16 @@
                 updateScores();
                 setupVoting();
                 updateSpeakerUI();
+            }
+        });
+
+        socket.on('playerListUpdate', (data) => {
+            currentPlayers = data.players;
+            updateScores();
+            updateTurnOrderDisplay();
+            updateSpeakerUI();
+            if (document.getElementById('votingSection').style.display !== 'none') {
+                setupVoting();
             }
         });
 
@@ -564,6 +575,32 @@
             });
         }
 
+        document.getElementById('leaveGameBtn').addEventListener('click', () => {
+            const confirmDiv = document.createElement('div');
+            confirmDiv.className = 'modal';
+            confirmDiv.innerHTML = `
+                <div class="modal-content">
+                    <h2>Leave Game?</h2>
+                    <p>Are you sure you want to leave the game? You can rejoin anytime.</p>
+                    <div class="modal-buttons">
+                        <button id="confirmLeaveGame" class="btn btn-danger">Yes, Leave</button>
+                        <button id="cancelLeaveGame" class="btn btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(confirmDiv);
+
+            document.getElementById('confirmLeaveGame').addEventListener('click', () => {
+                socket.emit('leaveRoom', { roomCode });
+                socket.disconnect();
+                window.location.href = 'index.html';
+            });
+
+            document.getElementById('cancelLeaveGame').addEventListener('click', () => {
+                confirmDiv.remove();
+            });
+        });
+
         // Handle game ended
         socket.on('gameEnded', (data) => {
             // Show message in div
@@ -611,6 +648,20 @@
                 socket.disconnect();
                 window.location.href = 'index.html';
             }, 3000);
+        });
+
+        socket.on('kickedFromRoom', (data) => {
+            const message = data?.message || 'You were removed from the game.';
+            const noticeDiv = document.createElement('div');
+            noticeDiv.className = 'error-message';
+            noticeDiv.textContent = message;
+            noticeDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
+            document.body.appendChild(noticeDiv);
+            setTimeout(() => {
+                noticeDiv.remove();
+                socket.disconnect();
+                window.location.href = 'index.html';
+            }, 2500);
         });
 
         // Handle errors

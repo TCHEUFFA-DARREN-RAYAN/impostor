@@ -99,14 +99,72 @@ function shuffleArray(array) {
 
 // Get player list for a room
 function getPlayerList(roomCode) {
-  if (!rooms[roomCode]) return [];
-  return rooms[roomCode].players.map(p => ({
-    id: p.id,
-    name: p.name,
-    isHost: p.isHost,
-    turnOrder: p.turnOrder,
-    score: p.score || 0
-  }));
+  const room = rooms[roomCode];
+  if (!room) return [];
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomCode);
+  const connectedIds = socketsInRoom ? new Set(socketsInRoom) : new Set();
+  return room.players.map(player => {
+    const socket = io.sockets.sockets.get(player.id);
+    const isConnected = Boolean(socket && socket.connected && connectedIds.has(player.id));
+    return {
+      id: player.id,
+      name: player.name,
+      isHost: player.isHost,
+      turnOrder: player.turnOrder,
+      score: player.score || 0,
+      isConnected
+    };
+  });
+}
+
+function removePlayerFromRoom(roomCode, playerId, options = {}) {
+  const room = rooms[roomCode];
+  if (!room) return null;
+  const playerIndex = room.players.findIndex(p => p.id === playerId);
+  if (playerIndex === -1) return null;
+
+  const [removedPlayer] = room.players.splice(playerIndex, 1);
+  if (room.playerWords) {
+    delete room.playerWords[removedPlayer.name];
+  }
+  if (room.votes) {
+    delete room.votes[removedPlayer.name];
+  }
+  if (room.impostorNames) {
+    room.impostorNames = room.impostorNames.filter(name => name !== removedPlayer.name);
+  }
+
+  if (room.gameStarted && room.currentSpeaker === removedPlayer.turnOrder) {
+    const nextSpeaker = room.players
+      .filter(p => p.turnOrder !== null && p.turnOrder !== undefined)
+      .sort((a, b) => a.turnOrder - b.turnOrder)[0];
+
+    if (nextSpeaker) {
+      room.currentSpeaker = nextSpeaker.turnOrder;
+      io.to(roomCode).emit('speakerUpdate', {
+        currentSpeaker: room.currentSpeaker,
+        speakerName: nextSpeaker.name
+      });
+    }
+  }
+
+  if (options.notifySocket) {
+    const targetSocket = io.sockets.sockets.get(playerId);
+    if (targetSocket) {
+      targetSocket.leave(roomCode);
+      targetSocket.emit('kickedFromRoom', {
+        message: options.reason || 'You were removed from the room by the host.'
+      });
+    }
+  }
+
+  if (room.players.length === 0) {
+    delete rooms[roomCode];
+  } else {
+    io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+  }
+
+  return removedPlayer;
 }
 
 // Get connected players for a room (more reliable check)
@@ -291,6 +349,26 @@ io.on('connection', (socket) => {
 
     room.impostorCount = Math.max(1, Math.min(5, Number.parseInt(count) || 1));
     socket.emit('impostorCountUpdated', { count: room.impostorCount });
+  });
+
+  socket.on('kickPlayer', (data) => {
+    const { roomCode, playerId } = data;
+    const room = rooms[roomCode];
+
+    if (!room || !isHost(socket, room)) {
+      return;
+    }
+
+    const targetPlayer = room.players.find(p => p.id === playerId);
+    if (!targetPlayer || targetPlayer.isHost) {
+      return;
+    }
+
+    removePlayerFromRoom(roomCode, playerId, {
+      notifySocket: true,
+      reason: `${targetPlayer.name} was removed from the lobby by the host.`
+    });
+    socket.emit('playerKicked', { playerName: targetPlayer.name });
   });
 
   // Start game
@@ -569,6 +647,24 @@ io.on('connection', (socket) => {
     endRound(roomCode);
   });
 
+  socket.on('leaveRoom', (data) => {
+    const { roomCode } = data;
+    const room = rooms[roomCode];
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    if (player.isHost) {
+      io.to(roomCode).emit('hostLeft');
+      delete rooms[roomCode];
+      return;
+    }
+
+    removePlayerFromRoom(roomCode, socket.id);
+    socket.leave(roomCode);
+  });
+
   // Function to end round and calculate scores
   function endRound(roomCode) {
     const room = rooms[roomCode];
@@ -669,7 +765,7 @@ io.on('connection', (socket) => {
         
         // If game has started, don't remove players immediately - allow reconnection
         // This handles page navigation (lobby.html -> game.html)
-        if (room.gameStarted || wasHost) {
+      if (room.gameStarted || wasHost) {
           // Keep player in array for reconnection, don't remove immediately
           if (wasHost) {
             // Set a timeout to delete the room if host doesn't reconnect
@@ -689,11 +785,13 @@ io.on('connection', (socket) => {
           }
           // For non-host players in started game, just keep them in array
           // They'll reconnect with new socket ID
+        if (rooms[roomCode]) {
+          io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+        }
         } else {
           // Game hasn't started, remove player immediately
-          room.players.splice(playerIndex, 1);
+        removePlayerFromRoom(roomCode, socket.id);
           // Update player list for remaining players
-          io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
         }
         break;
       }
