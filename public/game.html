@@ -108,6 +108,7 @@
         let votingLocked = true;
         let currentSpeakerTurn = 1;
         let lastSpeakerName = 'Someone';
+        let waitingForSpeakerAck = false;
 
         function updateSpeakerUI() {
             const speakNowBtn = document.getElementById('speakNowBtn');
@@ -128,6 +129,20 @@
                 speakNowBtn.style.display = 'none';
                 othersSpeakingStatus.style.display = 'block';
                 otherSpeakerName.textContent = lastSpeakerName;
+            }
+            updateSpeakButtonAccessibility(isMyTurn);
+        }
+
+        function updateSpeakButtonAccessibility(isMyTurn) {
+            const speakNowBtn = document.getElementById('speakNowBtn');
+            if (!speakNowBtn) return;
+
+            if (isMyTurn) {
+                speakNowBtn.disabled = waitingForSpeakerAck;
+                speakNowBtn.style.cursor = waitingForSpeakerAck ? 'not-allowed' : 'pointer';
+            } else {
+                speakNowBtn.disabled = true;
+                speakNowBtn.style.cursor = 'not-allowed';
             }
         }
 
@@ -182,6 +197,7 @@
             document.getElementById('votingSection').style.display = 'block';
             hasVoted = false;
             votingLocked = true; // Default locked
+            waitingForSpeakerAck = false;
             updateVotingUI();
             
             // Show end round button for host
@@ -224,6 +240,7 @@
             document.getElementById('votingSection').style.display = 'block';
             hasVoted = false;
             votingLocked = true; // Default locked
+            waitingForSpeakerAck = false;
             updateVotingUI();
             
             // Show end round button for host
@@ -271,10 +288,14 @@
         socket.on('speakerUpdate', (data) => {
             currentSpeakerTurn = data.currentSpeaker;
             lastSpeakerName = data.speakerName;
+            waitingForSpeakerAck = false;
             updateSpeakerUI();
         });
 
         document.getElementById('speakNowBtn').addEventListener('click', () => {
+            if (waitingForSpeakerAck) return;
+            waitingForSpeakerAck = true;
+            updateSpeakButtonAccessibility(true);
             socket.emit('nextSpeaker', { roomCode });
         });
 
@@ -365,7 +386,11 @@
                 const voteButton = document.createElement('button');
                 voteButton.className = 'btn btn-vote';
                 voteButton.id = `vote-btn-${player.name}`;
-                voteButton.textContent = player.name;
+                const turnLabel = player.turnOrder ? `Turn ${player.turnOrder}` : 'Turn -';
+                voteButton.innerHTML = `
+                    <span class="vote-name">${player.name}</span>
+                    <span class="vote-turn-label">${turnLabel}</span>
+                `;
                 
                 // Set initial state based on votingLocked and hasVoted
                 if (votingLocked || hasVoted) {

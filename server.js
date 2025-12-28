@@ -11,6 +11,7 @@ const io = socketIo(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Word pairs dictionary
+// Word pairs dictionary
 const wordPairs = {
   "Désinfectant": "Hôpital",
   "Stéthoscope": "Ambulance",
@@ -266,6 +267,29 @@ function getPlayerList(roomCode) {
   });
 }
 
+function getActivePlayerCount(roomCode) {
+  const room = rooms[roomCode];
+  if (!room) return 0;
+  return room.players.filter(player => player.turnOrder !== null && player.turnOrder !== undefined).length;
+}
+
+function broadcastSpeakerUpdate(roomCode, targetSocketId) {
+  const room = rooms[roomCode];
+  if (!room) return;
+  const playerList = getPlayerList(roomCode);
+  const speaker = playerList.find(p => p.turnOrder === room.currentSpeaker);
+  const payload = {
+    currentSpeaker: room.currentSpeaker,
+    speakerName: speaker?.name || 'Someone'
+  };
+
+  if (targetSocketId) {
+    io.to(targetSocketId).emit('speakerUpdate', payload);
+  } else {
+    io.to(roomCode).emit('speakerUpdate', payload);
+  }
+}
+
 function removePlayerFromRoom(roomCode, playerId, options = {}) {
   const room = rooms[roomCode];
   if (!room) return null;
@@ -290,10 +314,7 @@ function removePlayerFromRoom(roomCode, playerId, options = {}) {
 
     if (nextSpeaker) {
       room.currentSpeaker = nextSpeaker.turnOrder;
-      io.to(roomCode).emit('speakerUpdate', {
-        currentSpeaker: room.currentSpeaker,
-        speakerName: nextSpeaker.name
-      });
+      broadcastSpeakerUpdate(roomCode);
     }
   }
 
@@ -384,34 +405,33 @@ io.on('connection', (socket) => {
     // Check if this socket is already in the room
     const existingPlayerIndex = room.players.findIndex(p => p.id === socket.id);
     if (existingPlayerIndex !== -1) {
+      const player = room.players[existingPlayerIndex];
       // Already in room, just rejoin socket room
       socket.join(roomCode);
       socket.emit('roomJoined', { roomCode });
-      
-      // If game has started, resend their word
-      if (room.gameStarted && room.playerWords?.[player.name]) {
-        const wordData = room.playerWords[player.name];
-        io.to(socket.id).emit('gameStarted', {
-          word: wordData.word,
-          isImpostor: wordData.isImpostor,
-          turnOrder: player.turnOrder,
-          players: getPlayerList(roomCode)
-        });
-      } else if (room.gameStarted && room.currentWordPair) {
-        // Fallback to old method
-        const player = room.players[existingPlayerIndex];
-        const isImpostor = room.impostorNames?.includes(player.name) ?? false;
-        io.to(socket.id).emit('gameStarted', {
-          word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
-          isImpostor: isImpostor,
-          turnOrder: player.turnOrder,
-          players: getPlayerList(roomCode)
-        });
+      if (room.gameStarted) {
+        // If game has started, resend their word
+        if (room.playerWords?.[player.name]) {
+          const wordData = room.playerWords[player.name];
+          io.to(socket.id).emit('gameStarted', {
+            word: wordData.word,
+            isImpostor: wordData.isImpostor,
+            turnOrder: player.turnOrder,
+            players: getPlayerList(roomCode)
+          });
+        } else if (room.currentWordPair) {
+          const isImpostor = room.impostorNames?.includes(player.name) ?? false;
+          io.to(socket.id).emit('gameStarted', {
+            word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
+            isImpostor: isImpostor,
+            turnOrder: player.turnOrder,
+            players: getPlayerList(roomCode)
+          });
+        }
+        broadcastSpeakerUpdate(roomCode, socket.id);
       }
-      
-      if (!room.gameStarted) {
-        io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
-      }
+
+      io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
       return;
     }
 
@@ -431,29 +451,28 @@ io.on('connection', (socket) => {
       socket.join(roomCode);
       socket.emit('roomJoined', { roomCode });
       
-      // If game has started, resend their word
-      if (room.gameStarted && room.playerWords?.[name]) {
-        const wordData = room.playerWords[name];
-        io.to(socket.id).emit('gameStarted', {
-          word: wordData.word,
-          isImpostor: wordData.isImpostor,
-          turnOrder: player.turnOrder,
-          players: getPlayerList(roomCode)
-        });
-      } else if (room.gameStarted && room.currentWordPair) {
-        // Fallback to old method
-        const isImpostor = room.impostorNames?.includes(name) ?? false;
-        io.to(socket.id).emit('gameStarted', {
-          word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
-          isImpostor: isImpostor,
-          turnOrder: player.turnOrder,
-          players: getPlayerList(roomCode)
-        });
+      if (room.gameStarted) {
+        if (room.playerWords?.[name]) {
+          const wordData = room.playerWords[name];
+          io.to(socket.id).emit('gameStarted', {
+            word: wordData.word,
+            isImpostor: wordData.isImpostor,
+            turnOrder: player.turnOrder,
+            players: getPlayerList(roomCode)
+          });
+        } else if (room.currentWordPair) {
+          const isImpostor = room.impostorNames?.includes(name) ?? false;
+          io.to(socket.id).emit('gameStarted', {
+            word: isImpostor ? room.currentWordPair.impostorWord : room.currentWordPair.mainWord,
+            isImpostor: isImpostor,
+            turnOrder: player.turnOrder,
+            players: getPlayerList(roomCode)
+          });
+        }
+        broadcastSpeakerUpdate(roomCode, socket.id);
       }
-      
-      if (!room.gameStarted) {
-        io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
-      }
+
+      io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
       console.log(`${name} reconnected to room ${roomCode}`);
       return;
     }
@@ -544,6 +563,14 @@ io.on('connection', (socket) => {
     const numbers = Array.from({ length: connectedPlayers.length }, (_, i) => i + 1);
     const shuffledNumbers = shuffleArray(numbers);
     
+    room.players.forEach(p => {
+      p.turnOrder = null;
+    });
+
+    room.players.forEach(p => {
+      p.turnOrder = null;
+    });
+
     connectedPlayers.forEach((player, index) => {
       const roomPlayer = room.players.find(rp => rp.name === player.name);
       if (roomPlayer) {
@@ -598,10 +625,7 @@ io.on('connection', (socket) => {
     // Initial speaker update - delay slightly to ensure client sets myTurnOrder
     setTimeout(() => {
       if (rooms[roomCode]) {
-        io.to(roomCode).emit('speakerUpdate', { 
-          currentSpeaker: rooms[roomCode].currentSpeaker,
-          speakerName: playerList.find(p => p.turnOrder === rooms[roomCode].currentSpeaker)?.name || 'Someone'
-        });
+        broadcastSpeakerUpdate(roomCode);
       }
     }, 500);
 
@@ -684,10 +708,7 @@ io.on('connection', (socket) => {
     // Initial speaker update for new round - delay slightly
     setTimeout(() => {
       if (rooms[roomCode]) {
-        io.to(roomCode).emit('speakerUpdate', { 
-          currentSpeaker: rooms[roomCode].currentSpeaker,
-          speakerName: playerList.find(p => p.turnOrder === rooms[roomCode].currentSpeaker)?.name || 'Someone'
-        });
+        broadcastSpeakerUpdate(roomCode);
       }
     }, 500);
 
@@ -717,11 +738,7 @@ io.on('connection', (socket) => {
     
     room.currentSpeaker = speakers[nextIndex].turnOrder;
     const nextSpeaker = speakers[nextIndex];
-
-    io.to(roomCode).emit('speakerUpdate', { 
-      currentSpeaker: room.currentSpeaker,
-      speakerName: nextSpeaker.name
-    });
+    broadcastSpeakerUpdate(roomCode);
     
     console.log(`Turn moved to speaker ${room.currentSpeaker} (${nextSpeaker.name}) in room ${roomCode}`);
   });
@@ -736,9 +753,10 @@ io.on('connection', (socket) => {
     }
 
     room.votingLocked = !room.votingLocked;
+    const totalPlayers = getActivePlayerCount(roomCode);
     io.to(roomCode).emit('votingStatusUpdate', { 
       locked: room.votingLocked,
-      totalPlayers: getConnectedPlayers(roomCode).length,
+      totalPlayers,
       totalVotes: Object.keys(room.votes).length
     });
     console.log(`Voting ${room.votingLocked ? 'locked' : 'unlocked'} in room ${roomCode}`);
@@ -769,16 +787,17 @@ io.on('connection', (socket) => {
     // Record the vote
     room.votes[votingPlayer.name] = votedPlayerName;
 
+    const totalPlayers = getActivePlayerCount(roomCode);
+
     // Broadcast vote update
     io.to(roomCode).emit('voteUpdate', {
       votes: room.votes,
       totalVotes: Object.keys(room.votes).length,
-      totalPlayers: getConnectedPlayers(roomCode).length
+      totalPlayers: totalPlayers
     });
 
     // Check if all players have voted
-    const connectedPlayers = getConnectedPlayers(roomCode);
-    if (Object.keys(room.votes).length >= connectedPlayers.length) {
+    if (Object.keys(room.votes).length >= totalPlayers) {
       // All players voted, end the round
       endRound(roomCode);
     }
@@ -914,7 +933,7 @@ io.on('connection', (socket) => {
         
         // If game has started, don't remove players immediately - allow reconnection
         // This handles page navigation (lobby.html -> game.html)
-      if (room.gameStarted || wasHost) {
+        if (room.gameStarted || wasHost) {
           // Keep player in array for reconnection, don't remove immediately
           if (wasHost) {
             // Set a timeout to delete the room if host doesn't reconnect
@@ -934,13 +953,14 @@ io.on('connection', (socket) => {
           }
           // For non-host players in started game, just keep them in array
           // They'll reconnect with new socket ID
-        if (rooms[roomCode]) {
-          io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
-        }
+          if (rooms[roomCode]) {
+            io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+          }
         } else {
-          // Game hasn't started, remove player immediately
-        removePlayerFromRoom(roomCode, socket.id);
-          // Update player list for remaining players
+          // Game hasn't started, keep them in the player list so the lobby stays intact
+          if (rooms[roomCode]) {
+            io.to(roomCode).emit('playerListUpdate', { players: getPlayerList(roomCode) });
+          }
         }
         break;
       }

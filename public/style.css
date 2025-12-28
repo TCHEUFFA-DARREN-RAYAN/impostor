@@ -511,7 +511,11 @@ body.impostor-mode .word {
     width: 100%;
     margin-bottom: 12px;
     min-height: 50px;
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    text-align: left;
 }
 
 .btn-vote:hover:not(:disabled) {
@@ -537,6 +541,20 @@ body.impostor-mode .word {
 .btn-vote.voted:disabled {
     background: #c0392b;
     opacity: 1;
+}
+
+.vote-name {
+    flex: 1;
+    text-align: left;
+}
+
+.vote-turn-label {
+    font-size: 0.85em;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .vote-status {
