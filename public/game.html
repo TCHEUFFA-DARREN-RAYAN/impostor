@@ -61,6 +61,7 @@
 
             <div id="hostControls" class="host-controls" style="display: none;">
                 <button id="toggleVotingBtn" class="btn btn-secondary">🔓 Unlock Voting</button>
+                <button id="resetVotingBtn" class="btn btn-warning">Reset Voting</button>
                 <button id="endRoundBtn" class="btn btn-secondary">End Round</button>
                 <button id="newRoundBtn" class="btn btn-primary">New Round</button>
                 <button id="endGameBtn" class="btn btn-danger">End Game</button>
@@ -458,6 +459,12 @@
             voteStatus.innerHTML = `<strong>Votes: ${data.totalVotes}/${data.totalPlayers}</strong><br><small>(Everyone must vote to see results)</small>`;
         });
 
+        socket.on('votingReset', () => {
+            hasVoted = false;
+            setupVoting();
+            updateVotingUI();
+        });
+
         // Handle vote updates
         socket.on('voteUpdate', (data) => {
             const voteStatus = document.getElementById('voteStatus');
@@ -543,6 +550,10 @@
 
             document.getElementById('toggleVotingBtn').addEventListener('click', () => {
                 socket.emit('toggleVoting', { roomCode });
+            });
+
+            document.getElementById('resetVotingBtn').addEventListener('click', () => {
+                socket.emit('resetVoting', { roomCode });
             });
             
             document.getElementById('endRoundBtn').addEventListener('click', () => {

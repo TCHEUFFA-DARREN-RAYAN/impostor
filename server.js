@@ -217,14 +217,10 @@ const wordPairs = {
 // In-memory storage for rooms
 const rooms = {};
 
-// Generate random room code (6 characters, alphanumeric)
+// Generate random room code (two digits)
 function generateRoomCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
+  const number = Math.floor(Math.random() * 100);
+  return number.toString().padStart(2, '0');
 }
 
 // Get random word pair
@@ -567,10 +563,6 @@ io.on('connection', (socket) => {
       p.turnOrder = null;
     });
 
-    room.players.forEach(p => {
-      p.turnOrder = null;
-    });
-
     connectedPlayers.forEach((player, index) => {
       const roomPlayer = room.players.find(rp => rp.name === player.name);
       if (roomPlayer) {
@@ -656,6 +648,10 @@ io.on('connection', (socket) => {
     const numbers = Array.from({ length: connectedPlayers.length }, (_, i) => i + 1);
     const shuffledNumbers = shuffleArray(numbers);
     
+    room.players.forEach(p => {
+      p.turnOrder = null;
+    });
+
     connectedPlayers.forEach((player, index) => {
       const roomPlayer = room.players.find(rp => rp.name === player.name);
       if (roomPlayer) {
@@ -760,6 +756,32 @@ io.on('connection', (socket) => {
       totalVotes: Object.keys(room.votes).length
     });
     console.log(`Voting ${room.votingLocked ? 'locked' : 'unlocked'} in room ${roomCode}`);
+  });
+
+  socket.on('resetVoting', (data) => {
+    const { roomCode } = data;
+    const room = rooms[roomCode];
+
+    if (!room || !isHost(socket, room) || !room.gameStarted || room.roundEnded) {
+      return;
+    }
+
+    room.votes = {};
+    room.votingLocked = true;
+    const totalPlayers = getActivePlayerCount(roomCode);
+
+    io.to(roomCode).emit('voteUpdate', {
+      votes: room.votes,
+      totalVotes: 0,
+      totalPlayers
+    });
+    io.to(roomCode).emit('votingStatusUpdate', {
+      locked: true,
+      totalPlayers,
+      totalVotes: 0
+    });
+    io.to(roomCode).emit('votingReset');
+    console.log(`Voting reset in room ${roomCode}`);
   });
 
   // Vote for impostor

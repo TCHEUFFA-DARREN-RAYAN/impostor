@@ -121,6 +121,18 @@ h1 {
     transform: scale(1.05);
 }
 
+.btn-warning {
+    background: #f39c12;
+    color: white;
+    border: 2px solid #d68910;
+}
+
+.btn-warning:hover {
+    background: #e67e22;
+    box-shadow: 0 4px 12px rgba(230, 126, 34, 0.4);
+    transform: scale(1.05);
+}
+
 .btn-danger {
     background: #e74c3c;
     color: white;
