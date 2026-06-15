@@ -102,45 +102,47 @@
         </div>
       </div>
 
-      <div id="playing-impostor-badge" class="impostor-bar" style="display:none;">
-        YOU ARE THE IMPOSTOR
-      </div>
-
-      <!-- Speaker spotlight -->
-      <div class="speaker-zone">
-        <div class="speaker-progress-track">
-          <div id="speaker-progress-bar" class="speaker-progress-fill"></div>
+      <div class="playing-scroll">
+        <div id="playing-impostor-badge" class="impostor-bar" style="display:none;">
+          YOU ARE THE IMPOSTOR
         </div>
-        <div id="speaker-spotlight" class="speaker-spotlight"></div>
-        <button id="btn-speak-done" class="btn btn-green btn-chunky speak-btn" style="display:none;">
-          SPEAK NOW!<small>Tap when finished</small>
-        </button>
-        <div id="speaker-listening" class="speaker-listening" style="display:none;">
-          <span id="speaker-listening-name">...</span> is speaking...
-        </div>
-      </div>
 
-      <!-- Voting -->
-      <div id="voting-section" class="voting-zone">
-        <h3 class="section-label">WHO IS THE IMPOSTOR?</h3>
-        <div id="voting-locked-msg" class="voting-locked-msg" style="display:none;">🔒 Voting locked — discuss first</div>
-        <div id="voting-grid" class="voting-grid"></div>
-        <div class="vote-progress-wrap">
-          <div class="vote-progress-track">
-            <div id="vote-progress-fill" class="vote-progress-fill"></div>
+        <!-- Speaker spotlight -->
+        <div class="speaker-zone">
+          <div class="speaker-progress-track">
+            <div id="speaker-progress-bar" class="speaker-progress-fill"></div>
           </div>
-          <span id="vote-progress-text" class="vote-progress-text">0 / 0 votes</span>
+          <div id="speaker-spotlight" class="speaker-spotlight"></div>
+          <button id="btn-speak-done" class="btn btn-green btn-chunky speak-btn" style="display:none;">
+            SPEAK NOW!<small>Tap when finished</small>
+          </button>
+          <div id="speaker-listening" class="speaker-listening" style="display:none;">
+            <span id="speaker-listening-name">...</span> is speaking...
+          </div>
         </div>
-      </div>
 
-      <!-- Host game controls -->
-      <div id="playing-host-controls" class="host-bar" style="display:none;">
-        <button id="btn-toggle-voting" class="btn btn-blue btn-sm">UNLOCK VOTING</button>
-        <button id="btn-reset-voting" class="btn btn-orange btn-sm">RESET</button>
-        <button id="btn-end-round" class="btn btn-red btn-sm">END ROUND</button>
-      </div>
+        <!-- Voting -->
+        <div id="voting-section" class="voting-zone">
+          <h3 class="section-label">WHO IS THE IMPOSTOR?</h3>
+          <div id="voting-locked-msg" class="voting-locked-msg" style="display:none;">🔒 Voting locked — discuss first</div>
+          <div id="voting-grid" class="voting-grid"></div>
+          <div class="vote-progress-wrap">
+            <div class="vote-progress-track">
+              <div id="vote-progress-fill" class="vote-progress-fill"></div>
+            </div>
+            <span id="vote-progress-text" class="vote-progress-text">0 / 0 votes</span>
+          </div>
+        </div>
 
-      <button id="btn-leave-game" class="btn btn-danger-outline btn-sm" style="margin-top:10px;">LEAVE GAME</button>
+        <!-- Host game controls -->
+        <div id="playing-host-controls" class="host-bar" style="display:none;">
+          <button id="btn-toggle-voting" class="btn btn-blue btn-sm">UNLOCK VOTING</button>
+          <button id="btn-reset-voting" class="btn btn-orange btn-sm">RESET</button>
+          <button id="btn-end-round" class="btn btn-red btn-sm">END ROUND</button>
+        </div>
+
+        <button id="btn-leave-game" class="btn btn-danger-outline btn-sm" style="margin-top:10px;">LEAVE GAME</button>
+      </div>
     </div>
   </div>
 
@@ -211,6 +213,19 @@
   <!-- Confetti canvas -->
   <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
 
+  <script>
+    document.body.addEventListener('touchmove', function(e) {
+      var t = e.target;
+      while (t && t !== document.body) {
+        var s = window.getComputedStyle(t);
+        if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
+          if (t.scrollHeight > t.clientHeight) return;
+        }
+        t = t.parentElement;
+      }
+      e.preventDefault();
+    }, { passive: false });
+  </script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="sounds.js"></script>
   <script src="particles.js"></script>
