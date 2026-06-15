@@ -1017,15 +1017,20 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Only the current speaker (or host) can advance the turn
+    const requestingPlayer = room.players.find(p => p.id === socket.id);
+    if (!requestingPlayer) return;
+    const isCurrentSpeaker = requestingPlayer.turnOrder === room.currentSpeaker;
+    const isHostPlayer = requestingPlayer.isHost;
+    if (!isCurrentSpeaker && !isHostPlayer) return;
+
     const playerList = getPlayerList(roomCode);
-    // Only cycle through players that actually have a turn order
     const speakers = playerList
       .filter(p => p.turnOrder !== null && p.turnOrder !== undefined)
       .sort((a, b) => a.turnOrder - b.turnOrder);
     
     if (speakers.length === 0) return;
 
-    // Find index of current speaker in the sorted list
     const currentIndex = speakers.findIndex(p => p.turnOrder === room.currentSpeaker);
     const nextIndex = (currentIndex + 1) % speakers.length;
     

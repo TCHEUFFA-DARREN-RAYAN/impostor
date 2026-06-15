@@ -392,9 +392,13 @@
     if (isMe) {
       speakBtn.style.display = 'flex';
       listen.style.display = 'none';
-      speakBtn.disabled = S.waitingForSpeakerAck;
+      speakBtn.disabled = false;
+      speakBtn.style.pointerEvents = '';
+      S.waitingForSpeakerAck = false;
     } else {
       speakBtn.style.display = 'none';
+      speakBtn.disabled = true;
+      speakBtn.style.pointerEvents = 'none';
       listen.style.display = 'block';
       $('speaker-listening-name').textContent = S.lastSpeakerName || '...';
     }
@@ -651,12 +655,15 @@
     }, 'LEAVE', 'btn-red');
 
     // ── Playing ──
-    $('btn-speak-done').onclick = () => {
+    $('btn-speak-done').addEventListener('click', () => {
       if (S.waitingForSpeakerAck) return;
+      const isMe = S.myTurnOrder != null && parseInt(S.currentSpeakerTurn) === parseInt(S.myTurnOrder);
+      if (!isMe) return;
       S.waitingForSpeakerAck = true;
       $('btn-speak-done').disabled = true;
+      $('btn-speak-done').style.pointerEvents = 'none';
       S.socket.emit('nextSpeaker', { roomCode: S.roomCode });
-    };
+    });
     $('btn-toggle-voting').onclick = () => S.socket.emit('toggleVoting', { roomCode: S.roomCode });
     $('btn-reset-voting').onclick = () => S.socket.emit('resetVoting', { roomCode: S.roomCode });
     $('btn-new-word').onclick = () => S.socket.emit('newRound', { roomCode: S.roomCode });
