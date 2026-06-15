@@ -1,146 +1,219 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Impostor — Multiplayer Word Game</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f0f23">
+  <title>IMPOSTOR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-    <div class="container">
-        <div class="card card--glass">
-            <h1>IMPOSTOR</h1>
-            <p class="subtitle">Find the impostor hiding among the crew</p>
+  <canvas id="starfield" class="starfield"></canvas>
 
-            <div class="button-group">
-                <button id="createBtn" class="btn btn-primary">Create Game</button>
-                <button id="joinBtn" class="btn btn-secondary">Join Game</button>
-            </div>
+  <button id="muteBtn" class="mute-btn" aria-label="Toggle sound">🔊</button>
 
-            <!-- Name Input Modal for Create -->
-            <div id="createNameModal" class="modal" style="display: none;">
-                <div class="modal-content">
-                    <h2>Enter Your Name</h2>
-                    <input type="text" id="createNameInput" class="input"
-                        placeholder="Your name (or leave blank for 'Host')" maxlength="20">
-                    <div class="modal-buttons">
-                        <button id="createNameSubmit" class="btn btn-primary">Create</button>
-                        <button id="createNameCancel" class="btn btn-secondary">Cancel</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Join Modal -->
-            <div id="joinModal" class="modal" style="display: none;">
-                <div class="modal-content">
-                    <h2>Join Game</h2>
-                    <label for="joinRoomCodeInput">Room Code:</label>
-                    <input type="text" id="joinRoomCodeInput" class="input" placeholder="Enter room code" maxlength="6"
-                        style="text-transform: uppercase;">
-                    <label for="joinNameInput" style="margin-top: 15px;">Your Name:</label>
-                    <input type="text" id="joinNameInput" class="input" placeholder="Enter your name" maxlength="20">
-                    <div class="modal-buttons">
-                        <button id="joinSubmit" class="btn btn-primary">Join</button>
-                        <button id="joinCancel" class="btn btn-secondary">Cancel</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <!-- ══════════ SCREEN: HOME ══════════ -->
+  <div id="screen-home" class="screen active">
+    <div class="panel home-panel">
+      <div class="home-logo">
+        <span class="logo-icon">🕵️</span>
+        <h1 class="game-title">IMPOSTOR</h1>
+      </div>
+      <p class="game-subtitle">Find the impostor among the crew</p>
+      <div class="home-actions">
+        <button id="btn-create" class="btn btn-blue btn-chunky">CREATE GAME</button>
+        <button id="btn-join" class="btn btn-green btn-chunky">JOIN GAME</button>
+      </div>
     </div>
+  </div>
 
-    <script src="particle-bg.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="client.js"></script>
-    <script>
-        // Initialize socket connection
-        const socket = io();
+  <!-- ══════════ SCREEN: LOBBY ══════════ -->
+  <div id="screen-lobby" class="screen">
+    <div class="panel lobby-panel">
+      <h2 class="screen-title">GAME LOBBY</h2>
 
-        // Store socket globally for use in other pages
-        window.gameSocket = socket;
+      <div class="room-code-box">
+        <span class="room-code-label">ROOM CODE</span>
+        <span id="lobby-room-code" class="room-code-value">--</span>
+        <button id="btn-copy-code" class="btn btn-small btn-blue">COPY</button>
+      </div>
 
-        // Create game
-        document.getElementById('createBtn').addEventListener('click', () => {
-            document.getElementById('createNameModal').style.display = 'flex';
-            document.getElementById('createNameInput').focus();
-        });
+      <div id="lobby-host-controls" class="lobby-host-section" style="display:none;">
+        <div class="impostor-row">
+          <span class="impostor-row-label">Impostors</span>
+          <div class="count-stepper">
+            <button id="btn-imp-minus" class="stepper-btn">−</button>
+            <span id="impostor-count-display" class="stepper-value">1</span>
+            <button id="btn-imp-plus" class="stepper-btn">+</button>
+          </div>
+        </div>
+        <button id="btn-start-game" class="btn btn-green btn-chunky btn-full">START GAME</button>
+      </div>
 
-        document.getElementById('createNameSubmit').addEventListener('click', () => {
-            const name = document.getElementById('createNameInput').value.trim() || 'Host';
-            sessionStorage.setItem('playerName', name);
-            sessionStorage.setItem('isHost', 'true');
-            document.getElementById('createNameModal').style.display = 'none';
-            socket.emit('createRoom', { name });
-        });
+      <div id="lobby-guest-msg" class="guest-msg" style="display:none;">
+        Waiting for host to start the game...
+      </div>
 
-        document.getElementById('createNameCancel').addEventListener('click', () => {
-            document.getElementById('createNameModal').style.display = 'none';
-        });
+      <div class="lobby-players-section">
+        <h3 class="section-label">PLAYERS <span id="lobby-player-count" class="player-count-badge">0</span></h3>
+        <div id="lobby-players-grid" class="lobby-players-grid"></div>
+      </div>
 
-        document.getElementById('createNameInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('createNameSubmit').click();
-            }
-        });
+      <button id="btn-leave-lobby" class="btn btn-danger-outline btn-chunky btn-full">LEAVE</button>
+    </div>
+  </div>
 
-        // Join game
-        document.getElementById('joinBtn').addEventListener('click', () => {
-            document.getElementById('joinModal').style.display = 'flex';
-            document.getElementById('joinRoomCodeInput').focus();
-        });
+  <!-- ══════════ SCREEN: WORD REVEAL ══════════ -->
+  <div id="screen-reveal" class="screen">
+    <div class="reveal-wrap">
+      <p class="reveal-instruction">TAP THE CARD</p>
+      <div id="reveal-card" class="reveal-card">
+        <div class="reveal-card-inner">
+          <div class="reveal-card-front">
+            <span class="reveal-q">?</span>
+            <span class="reveal-logo-text">IMPOSTOR</span>
+          </div>
+          <div class="reveal-card-back">
+            <span id="reveal-role" class="reveal-role">YOUR WORD IS</span>
+            <span id="reveal-word" class="reveal-word">---</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        document.getElementById('joinSubmit').addEventListener('click', () => {
-            const roomCode = document.getElementById('joinRoomCodeInput').value.trim().toUpperCase();
-            const name = document.getElementById('joinNameInput').value.trim();
-            if (roomCode && name) {
-                sessionStorage.setItem('playerName', name);
-                sessionStorage.setItem('isHost', 'false');
-                document.getElementById('joinModal').style.display = 'none';
-                socket.emit('joinRoom', { roomCode, name });
-            } else {
-                alert('Please enter both room code and name');
-            }
-        });
+  <!-- ══════════ SCREEN: PLAYING ══════════ -->
+  <div id="screen-playing" class="screen">
+    <div class="panel playing-panel">
+      <div class="playing-topbar">
+        <div class="topbar-cell">
+          <span class="topbar-label">SCORE</span>
+          <span id="playing-score" class="topbar-val">0</span>
+        </div>
+        <div class="topbar-cell topbar-word-cell">
+          <span id="playing-my-word" class="topbar-word">---</span>
+        </div>
+        <div class="topbar-cell">
+          <span class="topbar-label">TURN</span>
+          <span id="playing-turn" class="topbar-val">-/-</span>
+        </div>
+      </div>
 
-        document.getElementById('joinCancel').addEventListener('click', () => {
-            document.getElementById('joinModal').style.display = 'none';
-        });
+      <div id="playing-impostor-badge" class="impostor-bar" style="display:none;">
+        YOU ARE THE IMPOSTOR
+      </div>
 
-        document.getElementById('joinRoomCodeInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('joinNameInput').focus();
-            }
-        });
+      <!-- Speaker spotlight -->
+      <div class="speaker-zone">
+        <div class="speaker-progress-track">
+          <div id="speaker-progress-bar" class="speaker-progress-fill"></div>
+        </div>
+        <div id="speaker-spotlight" class="speaker-spotlight"></div>
+        <button id="btn-speak-done" class="btn btn-green btn-chunky speak-btn" style="display:none;">
+          SPEAK NOW!<small>Tap when finished</small>
+        </button>
+        <div id="speaker-listening" class="speaker-listening" style="display:none;">
+          <span id="speaker-listening-name">...</span> is speaking...
+        </div>
+      </div>
 
-        document.getElementById('joinNameInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('joinSubmit').click();
-            }
-        });
+      <!-- Voting -->
+      <div id="voting-section" class="voting-zone">
+        <h3 class="section-label">WHO IS THE IMPOSTOR?</h3>
+        <div id="voting-locked-msg" class="voting-locked-msg" style="display:none;">🔒 Voting locked — discuss first</div>
+        <div id="voting-grid" class="voting-grid"></div>
+        <div class="vote-progress-wrap">
+          <div class="vote-progress-track">
+            <div id="vote-progress-fill" class="vote-progress-fill"></div>
+          </div>
+          <span id="vote-progress-text" class="vote-progress-text">0 / 0 votes</span>
+        </div>
+      </div>
 
-        // Handle room created
-        socket.on('roomCreated', (data) => {
-            // Name is already stored from the create button click
-            window.location.href = `lobby.html?room=${data.roomCode}&host=true`;
-        });
+      <!-- Host game controls -->
+      <div id="playing-host-controls" class="host-bar" style="display:none;">
+        <button id="btn-toggle-voting" class="btn btn-blue btn-sm">UNLOCK VOTING</button>
+        <button id="btn-reset-voting" class="btn btn-orange btn-sm">RESET</button>
+        <button id="btn-end-round" class="btn btn-red btn-sm">END ROUND</button>
+      </div>
 
-        // Handle room joined
-        socket.on('roomJoined', (data) => {
-            // Name is already stored from the join button click
-            window.location.href = `lobby.html?room=${data.roomCode}&host=false`;
-        });
+      <button id="btn-leave-game" class="btn btn-danger-outline btn-sm" style="margin-top:10px;">LEAVE GAME</button>
+    </div>
+  </div>
 
-        // Handle errors
-        socket.on('joinError', (data) => {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.textContent = data.message;
-            errorDiv.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 6px; z-index: 1000; box-shadow: 0 4px 8px rgba(0,0,0,0.2);';
-            document.body.appendChild(errorDiv);
-            setTimeout(() => errorDiv.remove(), 5000);
-        });
-    </script>
+  <!-- ══════════ SCREEN: RESULTS ══════════ -->
+  <div id="screen-results" class="screen">
+    <div class="panel results-panel">
+      <div id="results-verdict" class="results-verdict"></div>
+      <div id="results-voted-player" class="results-section"></div>
+      <div id="results-impostor-reveal" class="results-section"></div>
+      <div id="results-scores" class="results-section"></div>
+
+      <div id="results-host-controls" class="results-actions" style="display:none;">
+        <button id="btn-new-round" class="btn btn-blue btn-chunky btn-full">NEW ROUND</button>
+        <button id="btn-end-game" class="btn btn-red btn-chunky btn-full">END GAME</button>
+      </div>
+      <div id="results-guest-msg" class="guest-msg" style="display:none;">Waiting for host...</div>
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN: GAME OVER ══════════ -->
+  <div id="screen-gameover" class="screen">
+    <div class="panel gameover-panel">
+      <h2 class="gameover-title">GAME OVER</h2>
+      <div id="podium" class="podium"></div>
+      <div id="other-scores" class="other-scores-list"></div>
+      <button id="btn-play-again" class="btn btn-blue btn-chunky btn-full">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <!-- ══════════ MODALS ══════════ -->
+  <div id="create-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <h3>ENTER YOUR NAME</h3>
+      <input id="create-name-input" class="game-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off">
+      <div class="modal-actions">
+        <button id="create-confirm" class="btn btn-blue btn-chunky">CREATE</button>
+        <button id="create-cancel" class="btn btn-secondary btn-chunky">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="join-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <h3>JOIN GAME</h3>
+      <input id="join-code-input" class="game-input" type="text" placeholder="Room code" maxlength="6" autocomplete="off" style="text-transform:uppercase;">
+      <input id="join-name-input" class="game-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off">
+      <div class="modal-actions">
+        <button id="join-confirm" class="btn btn-blue btn-chunky">JOIN</button>
+        <button id="join-cancel" class="btn btn-secondary btn-chunky">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <h3 id="modal-title"></h3>
+      <p id="modal-message"></p>
+      <div class="modal-actions">
+        <button id="modal-confirm" class="btn btn-blue btn-chunky">Yes</button>
+        <button id="modal-cancel" class="btn btn-secondary btn-chunky">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Confetti canvas -->
+  <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="sounds.js"></script>
+  <script src="particles.js"></script>
+  <script src="game.js"></script>
 </body>
-
 </html>
