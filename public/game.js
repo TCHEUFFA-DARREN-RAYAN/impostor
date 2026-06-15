@@ -659,6 +659,7 @@
     };
     $('btn-toggle-voting').onclick = () => S.socket.emit('toggleVoting', { roomCode: S.roomCode });
     $('btn-reset-voting').onclick = () => S.socket.emit('resetVoting', { roomCode: S.roomCode });
+    $('btn-new-word').onclick = () => S.socket.emit('newRound', { roomCode: S.roomCode });
     $('btn-end-round').onclick = () => confirm('End Round?', 'Show results now?', () => S.socket.emit('endRound', { roomCode: S.roomCode }), 'END ROUND', 'btn-red');
     $('btn-leave-game').onclick = () => confirm('Leave Game?', 'Are you sure?', () => {
       S.socket.emit('leaveRoom', { roomCode: S.roomCode }); resetAll(); showScreen('screen-home');
