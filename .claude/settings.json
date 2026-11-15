@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Read(//c/Users/DARREN/AppData/Local/Temp/impostor-qa/**)",
+      "Bash(timeout 120 node qa.js http://localhost:3100)"
+    ]
+  }
+}

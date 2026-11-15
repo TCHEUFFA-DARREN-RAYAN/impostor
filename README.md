@@ -1,161 +1,80 @@
-# 🎭 Impostor Game
+# 🕵️ Impostor
 
-A multiplayer word game where players try to find the impostor among them. Built with Node.js, Express, and Socket.io.
+A real-time multiplayer word game: everyone gets the same secret word except the impostor(s), who get a related word. Take turns giving clues, then vote out the impostor.
 
-## 🎮 How to Play
+Built with Node.js, Express and Socket.io. No database, no build step.
 
-1. **Create or Join a Game**
-   - Click "Create Game" to start a new room
-   - Click "Join Game" to enter an existing room with a room code
+## How to play
 
-2. **Lobby**
-   - Share your room code with friends
-   - Host can choose the number of impostors (1-5)
-   - Host clicks "Start Game" when ready
+1. **Create** a game, or **join** with a room code / invite link.
+2. In the lobby the host picks how many impostors (1–5, fewer than the players) and starts.
+3. Everyone taps their card to see their word. Impostors also see **YOU ARE THE IMPOSTOR**.
+4. Players speak in the shown order and tap **Speak now** when done.
+5. The host unlocks voting. When everybody has voted (or the host ends the round), results are shown.
+6. **Scoring:** if an impostor is among the most-voted players, every crewmate gets +1. Otherwise every impostor gets +1.
+7. The host can deal a **new word**, start a **new round**, or **end the game** to show the podium.
 
-3. **Gameplay**
-   - Each player receives a word on their device
-   - Normal players see the main word
-   - Impostor(s) see a related word and a red "IMPOSTOR" badge
-   - Players discuss and try to find the impostor
-   - Host can start a new round or end the game
+## Run locally
 
-## 🚀 Local Development
-
-### Prerequisites
-- Node.js (v14 or higher)
-- npm
-
-### Installation
-
-1. Clone or download this repository
-
-2. Install dependencies:
 ```bash
 npm install
+npm start          # http://localhost:3000
+npm run dev        # restarts on file changes
+npm test           # game-rule and socket integration tests
 ```
 
-3. Start the server:
-```bash
-npm start
+To test several players on one machine, use separate tabs: each tab is its own player.
+
+## Deploy (Render)
+
+- **Build command:** `npm install`
+- **Start command:** `npm start`
+- Health check path: `/healthz`
+
+Optional environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PORT` | `3000` | HTTP port (Render sets this) |
+| `ROOM_CODE_LENGTH` | `4` | Digits in a room code |
+| `MAX_PLAYERS_PER_ROOM` | `20` | Players per room |
+| `MAX_ROOMS` | `5000` | Rooms the server will hold at once |
+| `HOST_RECONNECT_GRACE_MS` | `60000` | How long a room waits for a disconnected host before closing |
+
+All game state lives in memory in a single process, so run **one instance**. Rooms are lost on restart/redeploy.
+
+## Project structure
+
+```
+server.js              HTTP + Socket.io bootstrap, health check, graceful shutdown
+src/
+  config.js            Limits and timings
+  words.js             Word pairs (crew word → impostor word)
+  Room.js              Game rules and state for one room (no networking, unit-tested)
+  RoomManager.js       Room codes, lookup, expiry of abandoned rooms
+  realtime.js          Socket protocol: validation, rate limiting, broadcasting
+  utils.js             Errors, shuffle, input cleaning, rate limiter, logging
+public/
+  index.html           All screens and dialogs
+  css/app.css          Styles
+  js/main.js           App controller: connection, state, screen selection, effects
+  js/net.js            Socket wrapper with request/acknowledgement promises
+  js/storage.js        Session (per tab) and preferences
+  js/ui.js, dom.js     Avatars, toasts, dialogs, confetti, DOM helpers
+  js/sounds.js         Synthesised sound effects
+  js/starfield.js      Animated background
+  js/screens/*.js      home, lobby, reveal, playing, results, gameover
+test/                  node:test suites
 ```
 
-4. Open your browser and navigate to:
-```
-http://localhost:3000
-```
+### How it works
 
-5. Test with multiple browser windows/tabs to simulate multiple players
+- The server is the single source of truth. After every change it sends each player a personalised `state` snapshot (only their own word and role). The client just renders the latest snapshot, so players can't drift out of sync.
+- Every client action is a request with an acknowledgement (`{ ok }` or `{ ok: false, error }`), so errors are shown to the right person.
+- Each player gets a secret session token saved in the tab. Reloading, losing signal or locking the phone rejoins the same seat with the same word, vote and score.
+- If the host disconnects, the room waits up to 60 s for them before closing. If the host leaves on purpose, the room closes right away.
+- Inputs are validated server-side, each socket is rate-limited, and abandoned rooms are cleaned up automatically.
 
-## 📦 Deployment to Render
+### Adding words
 
-### Step 1: Push to GitHub
-
-1. Create a new repository on GitHub
-2. Initialize git in your project folder:
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin YOUR_GITHUB_REPO_URL
-git push -u origin main
-```
-
-### Step 2: Deploy on Render
-
-1. Go to [Render.com](https://render.com) and sign up/login
-
-2. Click "New +" → "Web Service"
-
-3. Connect your GitHub repository
-
-4. Configure the service:
-   - **Name**: `impostor-game` (or any name you prefer)
-   - **Environment**: `Node`
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-   - **Plan**: Free (or any plan you prefer)
-
-5. Click "Create Web Service"
-
-6. Render will automatically:
-   - Build your application
-   - Deploy it
-   - Provide you with a URL (e.g., `https://impostor-game-xyz.onrender.com`)
-
-### Step 3: Access Your Game
-
-- Once deployed, you'll get a public URL
-- Share this URL with friends to play together
-- The game works on mobile devices too!
-
-## 🛠️ Technical Details
-
-### Tech Stack
-- **Backend**: Node.js + Express + Socket.io
-- **Frontend**: HTML, CSS, JavaScript
-- **Real-time Communication**: Socket.io WebSockets
-- **Storage**: In-memory (no database required)
-
-### Features
-- ✅ Real-time multiplayer gameplay
-- ✅ Room-based game sessions
-- ✅ Random impostor selection
-- ✅ Random word pair selection from 50+ French word pairs
-- ✅ Mobile-responsive design
-- ✅ Host controls (start game, new round, end game)
-- ✅ Automatic room cleanup when host leaves
-
-### File Structure
-```
-impostor-game/
-├── server.js              # Backend server with Socket.io
-├── package.json           # Dependencies
-├── README.md              # This file
-└── public/
-    ├── index.html         # Landing page
-    ├── lobby.html         # Waiting room
-    ├── game.html          # Word display screen
-    ├── style.css          # Styling
-    └── client.js          # Client-side utilities
-```
-
-## 🎯 Game Rules
-
-- Minimum 2 players required to start
-- Number of impostors must be less than total players
-- Each round, new impostors are randomly selected
-- Each round, a new random word pair is chosen
-- Host can start new rounds or end the game at any time
-
-## 📝 Notes
-
-- Rooms are stored in memory and will be lost if the server restarts
-- Rooms are automatically cleaned up when the host leaves
-- The game uses French word pairs (as specified in the requirements)
-- All game logic runs server-side for security
-
-## 🐛 Troubleshooting
-
-**Issue**: Can't connect to the game
-- Check that the server is running
-- Verify the port is correct (default: 3000)
-- Check browser console for errors
-
-**Issue**: Room not found
-- Make sure you're using the correct room code (case-sensitive)
-- Room codes expire when the host leaves
-
-**Issue**: Game won't start
-- Need at least 2 players
-- Number of impostors must be less than total players
-
-## 📄 License
-
-ISC
-
-## 🙏 Credits
-
-Built for multiplayer fun with friends!
-
+Add a line to `src/words.js`: `"Crew word": "Impostor word",`. Keys must be unique — `npm test` fails if one is duplicated.
